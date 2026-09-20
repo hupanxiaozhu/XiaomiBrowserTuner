@@ -15,8 +15,8 @@ android {
         // service 库要求 26（它用到 Android 8.0 起的 API）；模块本身不跑在低版本设备上
         minSdk = 26
         targetSdk = 34
-        versionCode = 31
-        versionName = "1.10.1"
+        versionCode = 32
+        versionName = "1.10.2"
     }
 
     buildTypes {

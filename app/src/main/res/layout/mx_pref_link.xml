@@ -1,19 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 可点入口行：ListPreference（下拉）与普通 Preference（跳转页）共用。
-     这一栏的行点击是「主操作」（开下拉 / 进页面），所以不放详情按钮 —— 详情只挂在开关行上。 -->
+
+     与开关行同一套尺寸（一条一卡：圆角 20dp / 内边距 18·16dp / 标题 16sp 粗体 / 副文案 13sp），
+     差别只在右侧：这里放箭头而不是开关。
+
+     这一栏的行点击是「主操作」（开下拉 / 进页面），所以不放详情入口 —— 详情只挂在开关行上。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginStart="14dp"
-    android:layout_marginEnd="14dp"
-    android:background="?android:attr/selectableItemBackground"
+    android:layout_marginStart="16dp"
+    android:layout_marginEnd="16dp"
+    android:background="@drawable/bg_mx_row_ripple"
     android:gravity="center_vertical"
-    android:minHeight="62dp"
+    android:minHeight="60dp"
     android:orientation="horizontal"
-    android:paddingStart="16dp"
-    android:paddingTop="10dp"
-    android:paddingEnd="14dp"
-    android:paddingBottom="10dp">
+    android:paddingStart="18dp"
+    android:paddingTop="16dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="16dp">
 
     <LinearLayout
         android:layout_width="0dp"
@@ -28,24 +32,25 @@
             android:ellipsize="end"
             android:maxLines="2"
             android:textColor="@color/mx_text_primary"
-            android:textSize="14sp" />
+            android:textSize="16sp"
+            android:textStyle="bold" />
 
         <TextView
             android:id="@android:id/summary"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="3dp"
+            android:layout_marginTop="4dp"
             android:ellipsize="end"
-            android:lineSpacingExtra="1dp"
-            android:maxLines="2"
+            android:lineSpacingExtra="4dp"
+            android:maxLines="3"
             android:textColor="@color/mx_text_secondary"
-            android:textSize="11sp" />
+            android:textSize="13sp" />
     </LinearLayout>
 
     <ImageView
         android:layout_width="16dp"
         android:layout_height="16dp"
-        android:layout_marginStart="6dp"
+        android:layout_marginStart="10dp"
         android:contentDescription="@null"
         android:src="@drawable/ic_mx_arrow" />
 </LinearLayout>

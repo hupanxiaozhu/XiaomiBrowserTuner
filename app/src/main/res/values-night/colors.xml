@@ -11,4 +11,8 @@
     <color name="mx_accent_soft">#334C8DFF</color>
     <color name="mx_divider">#1AFFFFFF</color>
     <color name="mx_track_off">#3A3A3C</color>
+    <!-- 深色下的行水波纹：白色 20%，与多看 miuix_ripple 的深色档一致 -->
+    <color name="mx_ripple">#33FFFFFF</color>
+    <!-- 深色下主色仍是 #4C8DFF，白字依然够对比 -->
+    <color name="mx_on_accent">#FFFFFF</color>
 </resources>

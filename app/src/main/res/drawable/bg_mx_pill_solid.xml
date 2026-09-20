@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 胶囊底 · 实心主色（白字）。
+     只用在 hero 卡里：hero 的底本来就是 accent_soft，再叠 bg_mx_pill（同色淡底）等于看不见，
+     所以版本胶囊在这里换成实心主色。圆角规则与 bg_mx_pill 一致（高 22dp → 11dp）。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/mx_accent" />
+    <corners android:radius="11dp" />
+</shape>

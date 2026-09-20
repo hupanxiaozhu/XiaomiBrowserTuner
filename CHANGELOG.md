@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.10.2 (versionCode 32) —— 设置页改「一条一卡」，关于页 hero 改版
+
+### 改了什么
+
+纯界面版式改版，功能、开关键、跨进程通道均未改动。
+
+| 位置 | 之前（1.10.1） | 现在（1.10.2） |
+|---|---|---|
+| 功能页列表 | 一组一张卡（组内用细分隔线拼成一整张） | **一条一卡**：每个开关一张 20dp 圆角独立卡片，行间 10dp 缝隙 |
+| 卡片内边距 | 行高 62dp、标题 14sp / 副文案 11sp | 18 / 16dp、标题 16sp 粗体 / 副文案 13sp |
+| 分区标题 | 12sp 粗体、与卡片正文对齐 | 14sp 次要色、比卡片正文更靠左 8dp |
+| 页面大标题 | 21sp / 副标题 12sp | 30sp / 副标题 13sp |
+| 关于页 | 图标卡（白底居中）+ 简介卡 + 更新日志（一张卡里多段） | **hero 主卡**（主色 12% 底 + 22sp 粗体模块名 + 实心主色版本胶囊 + 定位句）+ 简介卡 + 「项目信息」独立小卡 + 「更新日志」一版一卡 |
+| 更新日志条目 | 版本号（含 versionCode）一行 + 要点 | 版本号 16sp 粗体 + versionCode 小字 + 「当前 / 历史」tag 胶囊 + 要点列表 |
+| 行水波纹 | 方形（在卡片圆角外溢出成方角） | `bg_mx_row_ripple`：mask 裁到 20dp 圆角 |
+
+### 实现要点
+
+- `ui/CardGroupDecoration.kt` → **`ui/CardRowDecoration.kt`**：不再按「分组」拼接卡片，
+  而是给每一行画一张完整的 20dp 圆角卡片，`PreferenceCategory` 只当分区标题（不画卡、
+  上方多留 22dp 落差）。旧文件已删除。
+- 新增资源：`bg_mx_hero`（hero 底）、`bg_mx_pill_solid`（hero 里的实心版本胶囊，hero 底本身就是
+  主色淡底，再用淡底胶囊会看不见）、`bg_mx_row_ripple`；新增颜色 `mx_ripple` `mx_on_accent`；
+  新增 style `MxSectionHeader` / `MxInfoLabel` / `MxInfoValue`。
+- 关于页结构由 XML 承担（`view_about.xml`），`AboutFragment` 只做三件事：填运行时版本号、
+  填框架服务状态、按 `Changelogs.ALL` 生成「一版一卡」（首条挂「当前」tag）。
+
+### 为什么改
+
+三个兄弟工程（HookFanqie / DuokanTuner / HookBrowser）从 1.9.6 起共用同一套设计令牌，
+但番茄 HookFanqie 7.2.30 把设置页改成了「一条一卡 + hero 关于页」的版式，这里跟进对齐 ——
+三边观感一致，改一处令牌三边一起改（见 `docs/胶囊特效统一规范.md`）。
+
+---
+
 ## 1.10.1 (versionCode 31) —— 补上写入端：开关真的能同步到宿主了
 
 ### 症状

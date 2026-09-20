@@ -30,13 +30,13 @@ class PrefsFragment : PreferenceFragmentCompat() {
 
     /**
      * 列表就绪后**换装饰**：摘掉 `PreferenceFragmentCompat` 自带的全宽分隔线（它和 MIUI X 的
-     * 卡片打架），挂上 [CardGroupDecoration] 画分组卡片。
+     * 卡片打架），挂上 [CardRowDecoration] 给每一行画一张独立大卡片。
      */
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         listView?.apply {
             for (i in itemDecorationCount - 1 downTo 0) removeItemDecorationAt(i)
-            addItemDecoration(CardGroupDecoration(requireContext()))
+            addItemDecoration(CardRowDecoration(requireContext()))
             // 底部留白，最后一张卡片不贴屏幕边
             setPadding(paddingLeft, paddingTop, paddingRight, dp(BOTTOM_PAD_DP))
         }

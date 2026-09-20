@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 设置页骨架（1.9.4）：顶部标题区 + 内容容器 + 底部导航栏。
+<!-- 设置页骨架：顶部标题区 + 内容容器 + 底部导航栏。
      内容容器里放两个 Fragment（功能 / 关于），由 SettingsActivity 用 show/hide 切换，
-     标题区的文字跟着一起变。 -->
+     标题区的文字跟着一起变。
+
+     标题规格对齐番茄 HookFanqie 的 PageHeader：30sp 粗体大字 + 13sp 副文案，
+     上下留白 20 / 14dp、左右 22dp。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
@@ -16,7 +19,7 @@
         android:background="@drawable/bg_mx_header"
         android:orientation="vertical"
         android:paddingStart="22dp"
-        android:paddingTop="18dp"
+        android:paddingTop="20dp"
         android:paddingEnd="22dp"
         android:paddingBottom="14dp">
 
@@ -26,17 +29,17 @@
             android:layout_height="wrap_content"
             android:text="@string/pane_features"
             android:textColor="@color/mx_text_primary"
-            android:textSize="21sp"
+            android:textSize="30sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/tv_page_sub"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="3dp"
+            android:layout_marginTop="6dp"
             android:text="@string/pane_features_sub"
             android:textColor="@color/mx_text_secondary"
-            android:textSize="12sp" />
+            android:textSize="13sp" />
     </LinearLayout>
 
     <FrameLayout

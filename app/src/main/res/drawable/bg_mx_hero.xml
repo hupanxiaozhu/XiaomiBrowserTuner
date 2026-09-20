@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- hero 卡底（关于页的应用主卡）。
+     主色 12% 淡蓝 + 20dp 圆角，与番茄 HookFanqie 的 AboutHero、多看 AboutPage 的 hero 同款：
+     hero 底本身就是主色淡底，往里再放「浅蓝胶囊」就看不见了 —— 那种场合要用
+     bg_mx_pill_solid（实心主色 + 白字）。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/mx_accent_soft" />
+    <corners android:radius="20dp" />
+</shape>

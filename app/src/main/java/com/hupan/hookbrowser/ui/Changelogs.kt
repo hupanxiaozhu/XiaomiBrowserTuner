@@ -22,6 +22,16 @@ internal object Changelogs {
 
     val ALL = listOf(
         Entry(
+            "1.10.2", 32, listOf(
+                "设置页升级为「一条一卡」大卡片：每个开关一张 20dp 圆角独立卡片（内边距 18/16dp、标题 16sp 粗体、副文案 13sp），行与行之间留 10dp 缝隙 —— 取代原先「一组一张卡、组内用细分隔线」的版式（CardGroupDecoration → CardRowDecoration）",
+                "关于页重排：hero 主卡（主色 12% 底 + 模块名 22sp 粗体 + 实心主色版本胶囊 + 一句话定位）→ 简介卡 → 「项目信息」一组独立小卡 → 「更新日志」一版一张卡（版本号 + versionCode + 「当前 / 历史」tag 胶囊 + 要点列表）",
+                "页面大标题 21sp → 30sp，副标题 12sp → 13sp；分区标题改为 14sp 次要色并与卡片左缘错开 8dp",
+                "列表行水波纹改走 bg_mx_row_ripple（mask 裁到 20dp 圆角），不再在卡片四角留下方形色块",
+                "新增 drawable：bg_mx_hero / bg_mx_pill_solid / bg_mx_row_ripple；新增 style：MxSectionHeader / MxInfoLabel / MxInfoValue",
+                "版式与多看 DuokanTuner 1.25、番茄 HookFanqie 7.2.30 对齐 —— 三个工程同一套令牌与观感"
+            )
+        ),
+        Entry(
             "1.10.1", 31, listOf(
                 "修复「界面上开关是开的、浏览器里却不生效」：1.10.0 只把读取端迁到了框架数据库，写入端还在写本地 XML —— 两端不是同一份数据",
                 "补上写入端 libxposed service：框架经 XposedProvider 把服务 binder 送进模块进程，开关与规则库改完即刻同步给宿主",

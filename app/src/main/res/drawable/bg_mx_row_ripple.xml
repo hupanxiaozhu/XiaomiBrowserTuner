@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 列表行的水波纹，**被裁到卡片圆角里**。
+     卡片底色由 CardRowDecoration 画在行的下层，行自己只负责涟漪；不给 mask 的话
+     涟漪是个直角矩形，会溢出 20dp 圆角、在卡片四角留下方形色块。
+     mask 的形状必须与卡片一致（20dp 圆角）。 -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/mx_ripple">
+    <item android:id="@android:id/mask">
+        <shape android:shape="rectangle">
+            <solid android:color="#FFFFFF" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+</ripple>

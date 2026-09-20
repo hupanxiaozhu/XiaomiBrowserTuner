@@ -20,4 +20,9 @@
     <!-- 开关未选中轨道 / 关闭态胶囊底：实色浅灰（M3 的 surfaceContainerHighest 语义）。
          原先用的是 #26000000（15% 黑），与多看的实色 #E5E5E5 不是一回事 —— 深色下差别更大 -->
     <color name="mx_track_off">#E5E5E5</color>
+    <!-- 列表行水波纹。行背景是 bg_mx_row_ripple（mask 裁到 20dp 圆角），
+         色值与多看 miuix_ripple 同档（12% 主文本色） -->
+    <color name="mx_ripple">#1F000000</color>
+    <!-- hero 卡里实心主色胶囊上的文字色（与 material 的 colorOnPrimary 同值） -->
+    <color name="mx_on_accent">#FFFFFF</color>
 </resources>

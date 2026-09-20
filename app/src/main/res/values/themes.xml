@@ -38,4 +38,31 @@
         <item name="android:textColor">@color/mx_text_primary</item>
         <item name="android:textSize">13sp</item>
     </style>
+
+    <!-- 关于页的分区标题（「项目信息 / 更新日志」）：
+         番茄 HookFanqie 的 SectionHeader 等价物 —— 14sp、次要色、比卡片正文更靠左一点。
+         左边的 8dp 是相对父容器的（父容器已有 16dp 留白），不是绝对位置。 -->
+    <style name="MxSectionHeader">
+        <item name="android:paddingStart">8dp</item>
+        <item name="android:paddingTop">22dp</item>
+        <item name="android:paddingEnd">16dp</item>
+        <item name="android:paddingBottom">2dp</item>
+        <item name="android:textColor">@color/mx_text_secondary</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <!-- 关于页信息卡的标签与取值：番茄 InfoCard 的等价物
+         （标签 12sp 次要色在上，取值 15sp 粗体在下） -->
+    <style name="MxInfoLabel">
+        <item name="android:textColor">@color/mx_text_secondary</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+
+    <style name="MxInfoValue">
+        <item name="android:layout_marginTop">3dp</item>
+        <item name="android:lineSpacingExtra">3dp</item>
+        <item name="android:textColor">@color/mx_text_primary</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
 </resources>
