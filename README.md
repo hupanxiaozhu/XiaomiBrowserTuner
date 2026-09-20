@@ -1,26 +1,345 @@
-# XiaomiBrowserTuner — 小米浏览器净化模块
+<div align="center">
 
-针对 `com.android.browser`（**小米浏览器 / Xiaomi Browser**）的 Xposed / LSPosed 模块，
-**由原作者发布的 `base.apk` 模块反编译还原后重写**（分析见 [`docs/base.apk-分析报告.md`](docs/base.apk-分析报告.md)），
-把原先写死在代码里的去广告逻辑改成「每组功能一个开关 + 一个设置界面」。
+# XiaomiBrowserTuner
 
-> 目标宿主是**小米浏览器**（`com.android.browser`，MIUI / HyperOS 内置浏览器），
-> 不是 Chrome、不是 AOSP Browser，也不是任何第三方壳浏览器。
+**小米浏览器（Xiaomi Browser）净化模块 · Xposed / LSPosed**
+
+[![Release](https://img.shields.io/github/v/release/hupanxiaozhu/XiaomiBrowserTuner?style=flat-square&label=release&color=3482FF)](https://github.com/hupanxiaozhu/XiaomiBrowserTuner/releases)
+[![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white)](#安装)
+[![LSPosed](https://img.shields.io/badge/LSPosed-2.3%2B-FF6B6B?style=flat-square)](#安装)
+[![libxposed API](https://img.shields.io/badge/libxposed_API-102-4C8DFF?style=flat-square)](#兼容性)
+[![Host](https://img.shields.io/badge/host-20.27.1010901-FF8C00?style=flat-square)](#兼容性)
+[![License](https://img.shields.io/badge/license-proprietary-red?style=flat-square)](#许可与免责)
+
+由原作者发布的 `base.apk` 模块反编译还原后重写，
+把原先写死在代码里的去广告逻辑改成「**每组功能一个开关 + 一个设置界面**」。
+
+</div>
+
+> ⚠️ **目标宿主是小米浏览器**（`com.android.browser`，MIUI / HyperOS 内置）。
+> 不是 Chrome、不是 AOSP Browser，也不是任何第三方套壳浏览器 —— 装到别的浏览器上不会有任何效果。
 
 - 包名：`com.hupan.hookbrowser`
-- 版本：**1.10.1（versionCode 31）—— 补上开关的写入端**（`compileOnly io.github.libxposed:api:102.0.0`
-  + `implementation io.github.libxposed:service:102.0.0`；模块身份由 `META-INF/xposed/` 声明；
-  跨进程读开关走 `XposedInterface#getRemotePreferences`，**写入走 `XposedService`**）
 - 作用域：`com.android.browser`
-- minSdk 26 / targetSdk 34 / **compileSdk 37**（Java 17；libxposed 102 的 AAR 元数据要求 ≥37，
-  AGP 8.2.2 的「未测试」提示用 `android.suppressUnsupportedCompileSdk=37` 压掉）
-- 承接来源：base.apk（作者 Jun_ao，v1.2.0 / versionCode 2）
-- **hook 目标核对基线**：小米浏览器 **20.27.1010901**（`com.android.browser`，versionCode 202710100，33 个 dex）。
-  本工程所有 hook 点都是在这个版本上实测核对过的；宿主升级后可能有类名变动，挂不上只记日志、不会崩。
+- 当前版本：**1.10.1**（versionCode 31）
 
 ---
 
-## 功能与开关
+## 特性
+
+每一个功能都是**独立开关**，改完**即时生效**，不需要重启浏览器。
+
+| 分组 | 功能 | 做什么 | 默认 |
+|---|---|---|---|
+| 去广告 | **开屏广告** | 拦 MSA 联盟开屏广告 | ✅ 开 |
+| 去广告 | **首页推广位** | 屏蔽首页推广位与切换引导 | ✅ 开 |
+| 去广告 | **搜索推荐广告** | 藏掉搜索下拉里的推广卡片 | ✅ 开 |
+| 去广告 | **错误页热搜榜** | 摘掉「无法访问」页底部的热搜榜单 | ✅ 开 |
+| 去广告 | **宿主广告开关** | 强制关闭宿主自己的广告判断 | ✅ 开 |
+| 自定义规则 | **自定义拦截规则** | 导入 Adblock 语法规则：URL 拦截 + 元素隐藏 | ✅ 开 |
+| 自定义规则 | **接管宿主拦截引擎** | ⚠️ 用你的规则替换宿主 native 规则库 | ⬜ 关 |
+| 界面精简 | **下载弹窗** | 不建下载弹窗、不推应用、不跳市场 | ✅ 开 |
+| 界面精简 | **UA 伪装** | 抹掉 UA 里的小米浏览器标识 | ✅ 开 |
+| 界面精简 | **默认搜索引擎** | 把必应 / Google / Yandex 内置进切换栏 | ✅ 开 |
+| 界面精简 | **解锁隐藏设置项** | ⚠️ 强制放出宿主设置页的隐藏项 | ⬜ 关 |
+| 界面精简 | **浏览器调试模式** | 放开宿主调试模式 + 输出模块详细日志 | ⬜ 关 |
+| 界面精简 | **拦截网址安全检测** | ⚠️ 不再提示钓鱼 / 恶意站点 | ⬜ 关 |
+
+- **总闸**：关掉「启用模块」后所有 hook 立即变 no-op，不用卸载。
+- ⚠️ 标记的三项会改变宿主的默认行为，开启时会**弹风险确认**。
+- 除「接管宿主拦截引擎」外，所有功能都不修改宿主自身的数据。
+
+---
+
+## 安装
+
+### 前置要求
+
+| 项 | 要求 |
+|---|---|
+| 宿主 | **小米浏览器 20.27.1010901**（`com.android.browser`，versionCode 202710100） |
+| 框架 | **LSPosed 2.3 及以上**（模块基于 libxposed API 102） |
+| 系统 | Android 8.0+（minSdk 26） |
+
+### 步骤
+
+1. 从 [Releases](https://github.com/hupanxiaozhu/XiaomiBrowserTuner/releases) 下载 `XiaomiBrowserTuner-vX.Y.Z.apk` 并安装。
+2. 打开 **LSPosed** → 模块 → 勾选 **XiaomiBrowserTuner** → 启用。
+3. 进入模块详情，**作用域勾选「小米浏览器」**。
+4. **强制停止**小米浏览器，然后重新打开。
+5. 打开 **XiaomiBrowserTuner** 设置页，看顶部状态行：
+
+   | 状态行 | 含义 |
+   |---|---|
+   | 「框架服务已连接」 | ✅ 一切正常，开关改动会即时同步到宿主 |
+   | 「模块未激活」 | ❌ 回到第 2 步，确认 LSPosed 里已启用本模块 |
+   | 「框架服务未连接」 | ❌ 框架不支持或模块未生效，见 [常见问题](#常见问题) |
+
+> **第 4 步不能省**：LSPosed 的作用域变更只在目标进程**重启之后**才生效。
+
+---
+
+## 使用方法
+
+### 设置页
+
+底部导航两栏：
+
+- **功能开关** —— 全部开关，按「去广告 / 界面精简 / 高级」分组
+- **关于** —— 版本、作用域、更新日志
+
+### 两套手势（每个功能都自带说明）
+
+| 操作 | 效果 |
+|---|---|
+| 点**开关**本身 | 立刻切换，**改完即时生效** |
+| 点**行的其他区域** | 弹出**功能详情**：作用 / Hook 目标 / 生效方式 / 注意事项 |
+
+所以每个功能该怎么用、有什么副作用，在设置页里就能看到，不用回来翻这篇 README。
+
+### 导入自定义拦截规则
+
+1. 设置页 → **自定义拦截规则** → **规则管理**
+2. 点 **从 URL 导入**（填规则文件地址）或 **从本地文件导入**
+3. 导入后**数秒内自动生效** —— 不需要重启浏览器，也不需要再开别的开关
+
+规则语法为 Adblock 风格（`||domain^` 拦请求、`##selector` 隐藏元素），
+支持多套规则集的启停 / 查看 / 删除。需要连宿主自己的拦截引擎一起换掉时，
+再打开 **接管宿主拦截引擎**（默认关闭，说明见下方 FAQ）。
+
+### 出问题时怎么自查
+
+1. 打开 **浏览器调试模式**（会同时放出宿主自身的调试开关）
+2. 复现问题，然后到 **LSPosed → 日志** 搜 **TAG `HookBrowser`**
+3. 每个 hook 都会打「已挂载 / 未找到」，一眼就能看出是哪一条断的
+
+---
+
+## 常见问题
+
+<details>
+<summary><b>装了之后一点变化都没有？</b></summary>
+
+按顺序检查三件事：
+
+1. **LSPosed 里启用了吗** —— 模块列表里 XiaomiBrowserTuner 的开关要是打开状态。
+2. **作用域勾选了吗** —— 必须是「小米浏览器」（`com.android.browser`）。
+3. **强制停止过宿主吗** —— 作用域变更只在重启目标进程后生效。
+
+设置页顶部的状态行是最快的判据：「框架服务已连接」说明链路是通的。
+功能没生效还可以在 LSPosed 日志里搜 TAG `HookBrowser`，看对应功能的 hook 是「已挂载」还是「未找到」。
+
+</details>
+
+<details>
+<summary><b>开关改了但没生效？</b></summary>
+
+**1.10.1 之前必现**：那时只做了开关的**读取端**，模块 App 写的是本地文件，宿主读的是框架数据库，两端不是同一份数据。
+1.10.1 补上写入端后即时同步。
+
+如果用的是 1.10.1 及以上仍然不生效，看设置页状态行：
+
+- 「框架服务未连接」→ 框架不支持跨进程写入，检查 LSPosed 版本（需 2.3+）。
+- 日志里出现 `[E] getRemotePreferences(settings) 失败` → 框架抛异常，全部开关退化为默认值。
+  此时**默认关闭**的三项（解锁隐藏设置项 / 浏览器调试模式 / 拦截网址安全检测）永远开不起来，
+  而默认开启的广告类看起来「正常」，容易误判成「只有某几个开关坏了」。
+
+</details>
+
+<details>
+<summary><b>能用在其他浏览器上吗？</b></summary>
+
+不能。本模块的所有 hook 点都是针对小米浏览器（`com.android.browser`，MIUI / HyperOS 内置）的类名与方法名，
+装到 Chrome、Edge、夸克等浏览器上不会有任何效果 —— 也不会崩溃，只是纯 no-op。
+
+</details>
+
+<details>
+<summary><b>宿主升级后失效了怎么办？</b></summary>
+
+hook 目标是对着宿主 **20.27.1010901** 逐个核对过的。小米浏览器升级后类名可能变动，
+届时对应的 hook 会挂不上 —— **模块只记日志、不会崩**，表现为该功能静默失效。
+
+排查：打开「浏览器调试模式」，在 LSPosed 日志里搜 TAG `HookBrowser`，找到打「未找到」的那条，
+再对照 `docs/宿主20.27-hook目标核对.md` 的核对方法重新定位。完整核对结果见 [兼容性](#兼容性) 一节。
+
+</details>
+
+<details>
+<summary><b>「接管宿主拦截引擎」是什么？为什么默认关闭？</b></summary>
+
+小米浏览器自带一套 **native 拦截引擎**（规则库在 `files/data/adblock/miui_blacklist.json`）。
+默认情况下模块只拦自己能拦到的位置；打开这个开关后，模块会把宿主的规则库**换成你导入的规则**、
+清空它的白名单，再让 native 引擎立即重载 —— 效果是**全浏览器范围**都按你的规则走。
+
+它是唯一会修改宿主自身数据的开关（其余功能都不碰宿主数据），所以默认关闭，并且：
+
+- 修改前会**自动备份**原规则库；
+- 关闭开关即从备份**还原**；
+- 想手动恢复也可以重新导入规则，或清除应用数据。
+
+</details>
+
+<details>
+<summary><b>会不会影响登录状态 / 被服务端检测？</b></summary>
+
+不会。模块只修改**本机客户端**的行为（界面元素、返回值、注入的过滤脚本），
+**不涉及任何服务端内容**，也不破解付费内容。
+
+唯一的对外网络请求是「从 URL 导入规则」时下载你指定的规则文件，此外模块自身不发起任何网络通信。
+
+</details>
+
+---
+
+## 更新记录
+
+<details>
+<summary><b>展开查看版本历史</b>（完整记录见 <a href="CHANGELOG.md">CHANGELOG.md</a>）</summary>
+
+| 版本 | 主题 |
+|---|---|
+| **1.10.1** | 补上写入端：开关真的能同步到宿主了 |
+| 1.10.0 | 迁移到 libxposed API 102 |
+| 1.9.8 | 移除 LSPosed 废弃项：XSharedPreferences |
+| 1.9.7 | 错误页去广告：摘掉「热搜榜」 |
+| 1.9.6 | 统一三工程胶囊特效 + 详情弹窗原地留驻 |
+| 1.9.4 | 底部导航两栏 +「点开关即切换 / 点行看详情」 |
+| 1.9.3 | 界面重构成 MIUI X + 日志分档 |
+| 1.9.2 | 用自定义规则接管宿主自己的拦截引擎 |
+| 1.9.1 | 上限集体放宽 + 直接读宿主自带的小米规则库 |
+| 1.9.0 | 元素隐藏规则（`##`）生效 |
+| 1.8.0 / 1.8.1 | 自定义拦截规则：导入 Adblock 语法规则 + 修闪退与误拦 |
+| 1.7.0 | 切换栏真正出现「必应 / Google / Yandex / 百度」 |
+| 1.6.1 ~ 1.6.9 | 搜索广告定位到 H5 并改为注入过滤脚本 |
+| 1.3.0 ~ 1.5.x | 早期迭代（界面与基础 hook） |
+
+</details>
+
+---
+
+## 兼容性
+本工程的 hook 目标是对着宿主 **20.27.1010901** 核对的，核对结果：
+
+| 目标 | 结果 |
+|---|---|
+| 首页推广 2 个类的 5 个方法 | ✅ 全在 |
+| MSA 开屏广告 3 个方法 | ✅ 全在 |
+| UA 3 个方法 | ✅ 全在 |
+| `BrowserSettings` 调试/广告系列 | ✅ 全在（该类 362 个方法） |
+| `Tab$GetSecurityFlagAsyncTask`、`DownloadHandler$1#call` | ✅ 在 |
+| `CommonDownloadDialogImpl#{onCreateDialog, requestGameRecommend}` | ✅ 在 |
+| `SugCardData#a` | ✅ 在（原版 base.apk 的搜索 hook，⚠ 1.6.0 复核判定**与广告无关**） |
+| `RecentAppManager#{initRecentAppList, getRecentAppList}` | ✅ 在（但三个列表长度恒 0，与卡片无关） |
+| `SearchSugManager#mWebView` / `#initSugWebView` / `#querySug` | ✅ 在（**1.6.1 主拦点**：反射取 `mWebView` + 注入 JS） |
+| `SearchSugManager#evaluateSugJS(String)` | ✅ 在（内部就是 `mWebView.evaluateJavascript(js, null)`，佐证注入通道有效） |
+| `SugCardData#requestGameRecommend` | ❌ 不存在 → 已从代码中删除 |
+| `CommonDownloadDialogImpl.mDownloadFromMarket`（字段） | ❌ 已移除 → 已删除 |
+| `ne.y#{b,e,h}`（原以为是广告参数注入点） | ✅ 方法在，但**与广告无关** → 1.5.1 已删除该 hook |
+| `HotSearchAdVersionData` | ❌ 无定义 → 仅作兜底 |
+
+所有 hook 都是「挂不上就跳过 + 打日志」，宿主升级不会崩。想看实际命中情况：
+抓 LSPosed 日志搜 TAG `HookBrowser`，每个 hook 都会打「已挂载 / 未找到」。
+
+---
+
+## 从源码构建
+
+### 工程元数据
+
+- 版本：**1.10.1**（versionCode 31）—— 本版补上的是**开关的写入端**：
+  `compileOnly io.github.libxposed:api:102.0.0` + `implementation io.github.libxposed:service:102.0.0`；
+  模块身份由 `META-INF/xposed/` 声明；跨进程**读**开关走 `XposedInterface#getRemotePreferences`，
+  **写**走 `XposedService`。
+- 构建配置：minSdk 26 / targetSdk 34 / **compileSdk 37**（Java 17）。
+  libxposed API 102 的 AAR 元数据要求 compileSdk ≥ 37；AGP 8.2.2 的「未测试」提示用
+  `android.suppressUnsupportedCompileSdk=37` 压掉。
+- 承接来源：base.apk（原作者 Jun_ao，v1.2.0 / versionCode 2）。
+- hook 目标核对基线：小米浏览器 **20.27.1010901**（`com.android.browser`，versionCode 202710100，33 个 dex）——
+  本工程所有 hook 点都是在这个版本上实测核对过的。
+1. 用 Android Studio 打开**本工程根目录**（Hedgehog 或更新版本，需要 JDK 17；AS 自带 JBR 即可）。
+2. 直接 `Build > Build APK(s)`。
+
+工程已按国内网络环境配置好：
+
+- Gradle 分发包走腾讯云镜像（`gradle/wrapper/gradle-wrapper.properties`）
+- 依赖仓库 `阿里云 → google → mavenCentral` 依次兜底（`settings.gradle.kts`）
+- **libxposed 两个库都走 Maven Central**：
+  - `compileOnly("io.github.libxposed:api:102.0.0")` —— 宿主进程读开关，运行时由框架提供，不打进 APK。
+  - `implementation("io.github.libxposed:service:102.0.0")` —— 模块进程写开关（1.10.1 起必需），
+    内含 `XposedProvider`，**必须打进 APK**。manifest 里还要声明它：
+    `android:authorities="${applicationId}.XposedService"`（写错 = 静默失效）。
+  - 不再需要 `app/libs/api-82.jar`（1.10.0 已删除）。
+  阿里云 public 仓库有同名 artifact，拉不到时优先查镜像是否同步。
+
+装好后在 LSPosed 里：**勾选「小米浏览器净化」→ 作用域勾 `com.android.browser` → 强行停止并重启小米浏览器**。
+
+> ⚠ **API 102 需要 LSPosed 2.x**（2.2.0 及以上已实测可用）。作用域由
+> `META-INF/xposed/scope.list` 声明（`staticScope=true` 时用户无法在 LSPosed 里额外加包），
+> 所以**不要去 LSPosed 的作用域界面找它**——那里显示的是只读的。
+
+编译级别是 **Java 17**（`sourceCompatibility`/`targetCompatibility`/`jvmTarget` 全为 17），
+与 AGP 8.2.2 自带的 JDK 对齐，因此不会出现 `源值 8 已过时` 这类 javac 警告。
+如果换成 Java 8 反而会重新引出它们 —— 那个警告本身无害，但没必要留着。
+
+---
+
+## 项目结构
+```
+XiaomiBrowserTuner/
+├─ app/
+│  └─ src/main/
+│     ├─ AndroidManifest.xml             Activity + XposedProvider；xposed* meta-data 1.10.0 起全部移除
+│     ├─ resources/META-INF/xposed/      API 102 模块声明（模块身份的唯一来源）
+│     │  ├─ module.prop                  minApiVersion=101 / targetApiVersion=102 / staticScope=true
+│     │  ├─ java_init.list               入口类：com.hupan.hookbrowser.MainHook
+│     │  └─ scope.list                   作用域：com.android.browser
+│     ├─ java/com/hupan/hookbrowser/
+│     │  ├─ MainHook.kt                  入口，继承 XposedModule，逐功能注册
+│     │  ├─ Config.kt                    宿主侧开关读取（remote preferences + 缓存 + 默认值表）
+│     │  ├─ ModuleService.kt             模块侧开关**写入**（框架服务 + 本地 SP 全量镜像）
+│     │  ├─ Xp.kt                        自带的反射层（取代旧 XposedHelpers）
+│     │  ├─ Hooks.kt                     hook 封装（Hooker/Chain 拦截器模型 + per-hook 容错）
+│     │  ├─ HostContext.kt               拿宿主 Application（读写宿主私有目录要用）
+│     │  ├─ XLog.kt                      日志（v 详细 / i 关键 / e 异常）+ 框架日志转发层
+│     │  ├─ features/                    11 个功能，一个一文件
+│     │  ├─ adblock/                     规则引擎与宿主规则读写：解析 / 引擎 / CSS / 存储
+│     │  │                               + HostAdRules（读宿主自带规则库）
+│     │  │                               + HostRuleInstaller（改写宿主规则库，接管用）
+│     │  └─ ui/                          SettingsActivity（底部导航容器）+ PrefsFragment（功能栏）
+│     │                                 + AboutFragment（关于栏）+ SwitchRowPreference（自绘开关行）
+│     │                                 + FeatureDetails（每个功能的详情）+ CardGroupDecoration
+│     │                                 + Changelogs（关于页更新日志）+ RuleManagerActivity
+│     ├─ res/xml/prefs.xml               开关定义（key 必须与 Config.kt 一致）
+│     ├─ res/layout/mx_pref_*            功能行布局（switch / link / category）
+│     ├─ res/layout/view_about.xml        「关于」栏内容
+│     ├─ res/layout/dlg_feature_detail.xml 功能详情弹窗
+│     ├─ res/menu/menu_settings_nav.xml   底部导航菜单
+│     ├─ res/color/mx_switch_track.xml    开关滑轨配色
+│     ├─ res/color/mx_nav_item.xml        底部导航选中配色
+│     └─ res/values{,-night}/colors.xml   MIUI X 设计令牌（浅色 / 深色）
+├─ tools/verify_static.py                静态走查（无 JDK 也能跑，交付前必过）
+├─ tools/test_js_filter.js               JS_FILTER 回归测试（node 跑，改注入脚本后必过）
+├─ docs/                                 逆向分析文档
+│  ├─ base.apk-分析报告.md               原 APK 的完整静态分析
+│  ├─ 宿主20.27-hook目标核对.md          hook 目标核对结果（第 2 节含 1.6.0 更正）
+│  ├─ 搜索栏广告-根因复核.md             搜索栏卡片不在 Java 侧的完整证据链
+│  ├─ 胶囊特效统一规范.md                MIUI X 胶囊令牌与动效约定（跨工程通用）
+│  └─ 解锁隐藏设置项-无效根因.md         隐藏设置项解锁失败的原因链
+├─ LICENSE                               许可与免责声明（非开源许可，见文末）
+└─ CHANGELOG.md
+```
+
+---
+
+## 实现细节（开发者向）
+
+下面每一节都是「这个模块为什么这么做」的完整推导：反汇编核对结果、失败尝试的记录、每个判定依据的边界。想改代码、适配新版宿主、或只是好奇某个功能怎么实现的，展开对应小节即可。
+
+<details>
+<summary><b>全部开关与 Hook 目标（含每个 hook 的具体类名与方法）</b></summary>
+
+### 全部开关与 Hook 目标
 
 | 开关 key | 名称 | Hook 目标（已在宿主 20.27 上核对） | 默认 |
 |---|---|---|---|
@@ -36,6 +355,8 @@
 | `ua_patch` | UA 伪装 | `...util.WebViewSettingConfig#{getDefaultUserAgent, getUserAgentStringWithoutSwan, getMiuiBrowserUseragentSuffix}` | 开 |
 | `ui_search_engine` | 默认搜索引擎 / 切换栏接管 | **注入引擎数据（不改任何 URL 出口）**：hook `...search.SearchEngineDataProvider#{initEngineSet, getSearchEngines, isCustomEngine, getItemTitle, getCurrentEngineTitle}`、`...search.interaction.settings.SearchModuleKVPrefs#isCustomSearchEngineDisplay`、`...search.SearchEngineInfo#getLabel`、`...toolbar.EngineTabsConfig#getAllSearchEngines`、`...toolbar.EngineTabsManager#buildDefaultFixedOrderList`、`...fullsearch.FullSearchActivity#buildSearchUrl`（仅模块引擎） | **开**（下拉可选 bing / google / yandex / baidu，默认 bing） |
 | `misc_unlock_pref` | 解锁隐藏设置项 | `androidx.preference.Preference#isVisible` → **true** | **关**（开启时弹风险确认） |
+| `misc_debug` | 调试模式 | `...BrowserSettings#{getDebugMode, getFormalDebugMode}`；**同时是模块自身详细日志（`XLog.v`）的总闸**——打开后挂载细节与 `【诊断】/【采样】/【注入】` 才会输出 | 关 |
+| `misc_security` | 拦截网址安全检测 | `...Tab$GetSecurityFlagAsyncTask#onPostExecute` | **关**（开启时弹风险确认） |
 
 > ⚠ **1.10.0 定案：开关读取已不再依赖文件权限，整段历史到此为止。**
 >
@@ -70,14 +391,16 @@
 > ⑤ `【诊断】采样满 12 个：… 其中 M 个宿主原本判不可见` —— 本机实测 **M=2**
 > （`pref_header_desktop_search` / `pref_incentive_task_center`），
 > 说明宿主**确实在用 `isVisible` 藏东西**，开关一开就该出来。
-| `misc_debug` | 调试模式 | `...BrowserSettings#{getDebugMode, getFormalDebugMode}`；**同时是模块自身详细日志（`XLog.v`）的总闸**——打开后挂载细节与 `【诊断】/【采样】/【注入】` 才会输出 | 关 |
-| `misc_security` | 拦截网址安全检测 | `...Tab$GetSecurityFlagAsyncTask#onPostExecute` | **关**（开启时弹风险确认） |
 
 UA 有 3 种可选模式：Chrome 移动版（真机信息，默认）／多 App 伪装（与 base.apk 硬编码串一致）／桌面版 Chrome。
 
----
+</details>
 
-## 设置页 UI（1.9.4：底部导航两栏）
+
+<details>
+<summary><b>设置页 UI 与「点开关切换 / 点行看详情」</b></summary>
+
+### 设置页 UI
 
 底部导航两个 tab：**左「功能开关」/ 右「关于」**，用 `show/hide` 切换（不是 `replace`），
 切回来时滚动位置、装饰器、SP 监听都还在。
@@ -127,7 +450,7 @@ UA 有 3 种可选模式：Chrome 移动版（真机信息，默认）／多 App
   底栏选中态走 M3 的 `itemActiveIndicatorStyle`（`MxNavIndicator`，64×32dp 全圆角）。
   块的圆角是另一套：卡片 20dp（`bg_mx_card` + `CardGroupDecoration`）、内容块 12dp（`bg_mx_block`）。
 
-### 这套 UI 已固化为跨栈规范
+#### 这套 UI 已固化为跨栈规范
 
 同一套 MIUI X 观感在三种技术栈上的落地方式，统一记在 skill **`miuix-module-settings-ui`**：
 设计令牌（色值 / 尺寸）、「点开关切换、点行看详情」交互约定、功能详情弹窗与关于页结构、坑清单。
@@ -145,7 +468,7 @@ UA 有 3 种可选模式：Chrome 移动版（真机信息，默认）／多 App
 各栈在「点行看详情」上的做法差异见 skill 第 4 节 —— 本工程要自绘 Preference 才是因为
 `SwitchPreferenceCompat` 注入的开关写死了 `clickable=false`。
 
-### 日志分档
+#### 日志分档
 
 | 档 | 何时输出 | 内容 |
 |---|---|---|
@@ -156,15 +479,19 @@ UA 有 3 种可选模式：Chrome 移动版（真机信息，默认）／多 App
 闸门**每次现查开关**（`Config` 自带 1 秒缓存），所以宿主运行期间打开「浏览器调试模式」，
 日志当场变详细，不用重启浏览器；读不到配置回退 `false`（静默）。
 
----
+</details>
 
-## 默认搜索引擎 / 切换栏接管（1.7.0）
+
+<details>
+<summary><b>默认搜索引擎 / 切换栏接管</b></summary>
+
+### 默认搜索引擎 / 切换栏接管
 
 把 **bing（默认）／Google／Yandex／百度** 注入宿主的引擎数据，首页搜索框下方那排切换栏
 （原生「全网 / 百度 / 抖音」）里就**多出**这三个引擎：**点哪个真的用哪个**，文字、图标、高亮同步。
 开关 key `ui_search_engine`（**默认开**），引擎 key `ui_search_engine_target`（默认 bing）。
 
-### 宿主链路（在 20.27.1010901 上反汇编核对）
+#### 宿主链路（在 20.27.1010901 上反汇编核对）
 
 ```
 模板（服务端 searchengine.json；本地兜底 res/raw/local_search_engine.json，占位符 {searchTerms}）
@@ -199,7 +526,7 @@ EngineTabsManager#buildEngineList
 douyin / onesearch / google / ai_search` 各有专属 res，**没有 bing / yandex** ——
 所以这两个走宿主的「自定义引擎」通道（通用图标 `ic_search_engine_tab_custom`）。
 
-### 关键事实（1.7.0 实测更正 1.6.8/1.6.9 的误判）
+#### 关键事实（1.7.0 实测更正 1.6.8/1.6.9 的误判）
 
 `getSearchEngineMapByScene("browserSearchBox")` 返回的就是 `processSearchEngineData(mEngineSet.searchBox)`
 —— 切换栏场景的 map 与 `searchBox` **是同一个池子**，不是两份数据。
@@ -208,7 +535,7 @@ douyin / onesearch / google / ai_search` 各有专属 res，**没有 bing / yand
 副作用正是「切换栏失效、切来切去只有 bing」；1.6.9 改对了方向但漏了三处：`searchBoxOrder` 没补、
 `buildDefaultFixedOrderList` 白名单没绕、栏内高亮读的 `defaultSearchEngine` 没写。）
 
-### 实现
+#### 实现
 
 | # | hook | 作用 |
 |---|---|---|
@@ -239,7 +566,7 @@ douyin / onesearch / google / ai_search` 各有专属 res，**没有 bing / yand
 bing / yandex 白名单里没有 → 走自定义引擎通道，用宿主自带的通用图标 `ic_search_engine_tab_custom`。
 （模块不能把自绘图标塞进宿主资源表，所以这两个共用通用图标；文字是准确的。）
 
-### 判读日志（TAG `HookBrowser`）
+#### 判读日志（TAG `HookBrowser`）
 
 ```
 注入搜索引擎 bing（必应）｜模板=https://cn.bing.com/search?q={searchTerms}&…
@@ -252,7 +579,7 @@ bing / yandex 白名单里没有 → 走自定义引擎通道，用宿主自带�
 有「注入」行但栏里没有 = `buildDefaultFixedOrderList` 这个 hook 没挂上（日志里会有「未找到 …，跳过」）。
 开关关掉后所有 hook 立即 no-op，宿主回到原行为。
 
-### 边界
+#### 边界
 
 - **服务端每 30 分钟重建数据** → 靠 `initEngineSet`(after) + `getSearchEngines`(before) 双重补齐，不用重启宿主。
 - 宿主自带的「搜索引擎」设置页会同步显示这四个引擎（同一份数据），且自定义引擎变为可见。
@@ -261,9 +588,13 @@ bing / yandex 白名单里没有 → 走自定义引擎通道，用宿主自带�
 - Google / Yandex 需要设备本身可访问。
 - 宿主新增/改名的引擎项（白名单数组、`searchBoxOrder`）在版本升级后可能需要重新核对。
 
----
+</details>
 
-## 自定义拦截规则（1.8.0 引入，1.8.1 修正，1.9.0 补元素隐藏，1.9.1 放宽上限 + 并进宿主自带规则库，1.9.2 可选接管宿主引擎）
+
+<details>
+<summary><b>自定义拦截规则（Adblock 语法、引擎、护栏、接管宿主引擎）</b></summary>
+
+### 自定义拦截规则
 
 用户导入自己的过滤规则，**两条通道各管一半**：
 
@@ -276,7 +607,7 @@ bing / yandex 白名单里没有 → 走自定义引擎通道，用宿主自带�
 `www.baidu.com` 自家路径，请求维度再怎么加规则也拦不到（1.8.1 真机实测：6023 条规则全部
 编译生效，整场只拦到 9 次，全是百度埋点）。
 
-### 为什么落在 `shouldInterceptRequest`
+#### 为什么落在 `shouldInterceptRequest`
 
 宿主 20.27 的 WebView 是 **hyper 内核**（`hyper.webkit.WebView` / `hyper.webkit.WebViewClient`），
 不是 `android.webkit.*`。请求在 Java 侧**唯一**会经过的汇聚点就是
@@ -286,7 +617,7 @@ bing / yandex 白名单里没有 → 走自定义引擎通道，用宿主自带�
 返回非 null 的响应 = 该请求不再走网络；返回 null = 交回宿主/内核照常加载。
 所以命中时**不阻断宿主逻辑，直接给它一个响应**，其余一律不插手。
 
-### 三条 hook 路（只挂一个类名必然漏）
+#### 三条 hook 路（只挂一个类名必然漏）
 
 `shouldInterceptRequest` 是**子类 override** 的方法 —— hook 基类拦不到不调 super 的子类：
 
@@ -301,7 +632,7 @@ bing / yandex 白名单里没有 → 走自定义引擎通道，用宿主自带�
 
 已挂类名进 Set 去重：同一个类被 hook 两次会让同一个请求走两遍判定。
 
-### 元素隐藏：为什么是注入 CSS 而不是「拦节点」
+#### 元素隐藏：为什么是注入 CSS 而不是「拦节点」
 
 `##` 规则编译成一段 CSS，注入 `<style>`：
 
@@ -328,7 +659,7 @@ style.textContent = c + "{display:none !important}";
 > **升级后必须重新导入规则**：1.8.x 的 `##` 规则在导入时就被丢了，规则库里没留存。
 > 到「规则管理」把原来的 URL / 文件重新导入一遍（同一来源覆盖，不堆积）。
 
-### 引擎：分桶 + 字面量预筛
+#### 引擎：分桶 + 字面量预筛
 
 `shouldInterceptRequest` 在网络线程、每个资源请求都调一次，规则动辄上千条，能 O(1) 的绝不走正则：
 
@@ -348,7 +679,7 @@ style.textContent = c + "{display:none !important}";
 >    `||ads.com^` 照样命中 `evilads.com`（子串里就有 `ads.com`）—— 1.8.0 的真实 bug。
 > 纯域名走 HashSet 不受影响，但 `||ads.com/ads.js` 这种复合规则必须走正则，两个细节都关键。
 
-### 参数与返回值：三套内核 = 三套同名类型（1.8.1 的教训）
+#### 参数与返回值：三套内核 = 三套同名类型（1.8.1 的教训）
 
 宿主进程里同时装着 **hyper**（`hyper.webkit.*`）、**MIUI**（`com.miui.webkit.*`）和 **百度 SDK**
 （`com.baidu.searchbox.sailor.*`）的 WebView 体系，同名类的类型**互不相干**：
@@ -369,7 +700,7 @@ style.textContent = c + "{display:none !important}";
   回调里的 try/catch 接不住 → 宿主闪退（1.8.0 真机：命中后 21ms 崩）。
 
 
-### 语法支持
+#### 语法支持
 
 支持 `!` / `#` 注释、`[Adblock Plus 1.1]` 头、`@@` 例外、`||host^`、`*` 通配、`^` 分隔符、
 `/regex/`、裸子串。
@@ -381,7 +712,7 @@ style.textContent = c + "{display:none !important}";
 - 其余 `$script` / `$image` / `$third-party` 选项：**剥掉选项、保留规则本体**（比原规则更宽；
   要按类型过滤得额外读请求头，收益不抵成本）。
 
-### 护栏
+#### 护栏
 
 导入时就掐掉危险规则（这些一旦生效会拦掉半个互联网）：
 
@@ -390,7 +721,7 @@ style.textContent = c + "{display:none !important}";
 - 通配规则去掉通配符后最长字面段 < 3 丢（`*a*` 等于全匹配）
 - 上限见下表
 
-#### 各层上限（1.9.1 集体放宽）
+##### 各层上限（1.9.1 集体放宽）
 
 **为什么必须放宽**：真机上「导入界面显示 5000 条拦截 + 4000 条隐藏」—— 两个数正好等于解析层的
 两个硬上限，**规则被静默截断了**。而且只放宽解析层没用：引擎三桶会接着丢，中文规则集里带路径 /
@@ -413,7 +744,7 @@ style.textContent = c + "{display:none !important}";
 ⚠ **放宽上限不会补回已经丢失的规则** —— 截断发生在导入那一刻，被砍掉的条目从来没写进规则库。
 要拿全必须在「规则管理」里**重新导入一次**。
 
-### 宿主自带规则库（1.9.1 起只读读取，1.9.2 起可选接管）
+#### 宿主自带规则库（1.9.1 起只读读取，1.9.2 起可选接管）
 
 小米浏览器**自己就有一套广告规则**，反汇编 `com.android.browser.util.AdBlockDataUpdator` 的事实：
 
@@ -443,11 +774,11 @@ style.textContent = c + "{display:none !important}";
 **1.9.2 起多了一个选项**：打开 `ad_host_override` 就不再是"读它的规则"，而是**让宿主跑我的规则**
 （写回那个目录 + 通知重载，并在每次宿主自己写盘后贴回）。见下一节。
 
-### 接管宿主拦截引擎（1.9.2，开关 `ad_host_override`）
+#### 接管宿主拦截引擎（1.9.2，开关 `ad_host_override`）
 
 上一节是「把宿主的规则读进来」，这一节反过来：**让宿主用它自己的 native 引擎跑我的规则**。
 
-#### 为什么只能改文件（反汇编结论，不是偷懒）
+##### 为什么只能改文件（反汇编结论，不是偷懒）
 
 宿主除了 Java 侧能 hook 的 `shouldInterceptRequest`，**还同时**在 native 层用
 `BlockingRuleMatcher` 做 URL 过滤（日志 tag `<AdBlock>`）。后者语法更全
@@ -465,7 +796,7 @@ AdBlockHelper#updateRules(context)
 native 按**文件路径**读，Java 侧不存在「注入规则」的接口。所以做法是
 **hook 它的写入通道 + 覆盖规则文件 + 叫它重载**（`HostRuleInstaller` / `HostAdOverrideFeature`）。
 
-#### 换哪些、留哪些
+##### 换哪些、留哪些
 
 | 文件 | 处理 | 为什么 |
 |---|---|---|
@@ -476,7 +807,7 @@ native 按**文件路径**读，Java 侧不存在「注入规则」的接口。�
 `##` 元素隐藏规则**不往里写**：native 不认 `##`，写进去只会刷 `<AdBlock> Parse error`，
 那部分继续由本模块的 CSS 注入通道负责。两条通道互补，同一请求两边都命中时结果一致。
 
-#### 三条防线（防止被宿主覆盖回去）
+##### 三条防线（防止被宿主覆盖回去）
 
 1. **Application 一就绪就写**（`HostContext.onApplication`）—— 赶在 native 首次读盘之前
 2. **hook 宿主的写入通道**：`AdBlockHelper$Updator#updateRuleList`（服务端下发）+
@@ -486,13 +817,13 @@ native 按**文件路径**读，Java 侧不存在「注入规则」的接口。�
 
 写完立刻 `notifyAdBlockUpdateConfig()`，**不用重启浏览器**。
 
-#### 备份与还原
+##### 备份与还原
 
 首次接管前把 5 个文件整体复制到同目录的 `.hb_backup/`；关闭开关自动还原。
 **备份目录存在就不再覆盖** —— 保证里面永远是"接管前"的原件，
 「开→关→开」循环不会把改过的内容当成原件存下来。
 
-#### 判读日志（TAG `HookBrowser`）
+##### 判读日志（TAG `HookBrowser`）
 
 | 日志 | 含义 |
 |---|---|
@@ -502,7 +833,7 @@ native 按**文件路径**读，Java 侧不存在「注入规则」的接口。�
 | `【宿主规则】通知 native 重载失败（规则已落盘，重启浏览器后生效）` | 重载口没调通，规则已写但要重启才读 |
 | `【宿主规则】开关已关闭，宿主规则库已还原为接管前的版本` | 还原成功 |
 
-### 存储：独立组
+#### 存储：独立组
 
 规则库落在**独立的** group `adrules`，**不塞进** `settings`：开关表小、规则库动辄几百 KB，
 分开后宿主侧可以给它们不同的刷新节奏（开关 1 秒、规则 5 秒，各自缓存）。
@@ -516,7 +847,7 @@ native 按**文件路径**读，Java 侧不存在「注入规则」的接口。�
 单个 value 超过 40 万字符会被跳过并打 `[E]`（远端写入是一次 Binder 事务，塞太大整体会失败）。
 `verify_static.py` 第 10 项把「模块侧写 / 宿主侧读」两处的组名钉死。
 
-### 判读日志（TAG `HookBrowser`）
+#### 判读日志（TAG `HookBrowser`）
 
 | 日志 | 含义 |
 |---|---|
@@ -526,7 +857,7 @@ native 按**文件路径**读，Java 侧不存在「注入规则」的接口。�
 | `【诊断】规则库：组 adrules 有 … 个 key，sets 长度=…` | remote preferences 读到了组。**这行显示「组为空」**= 模块进程还没导入过规则 |
 | `【拦截】#N 规则=… URL=…` | 真拦到了。前 30 条全打，之后每 200 条打一次 |
 
-### 边界
+#### 边界
 
 - 只接管 `http` / `https` 请求，且 URL 长度 ≤ 4096。
 - 字符串重载（`shouldInterceptRequest(WebView, String)`）拿不到 `isForMainFrame`，
@@ -536,12 +867,18 @@ native 按**文件路径**读，Java 侧不存在「注入规则」的接口。�
   过度匹配，白屏只会让人以为浏览器坏了。
 - 改动几秒内生效，不用重启浏览器；关掉开关立即恢复原样（不写任何宿主 SP）。
 
-## 错误页去广告（1.9.7，开关 `ad_error_page_hot`）
+</details>
+
+
+<details>
+<summary><b>错误页去广告</b></summary>
+
+### 错误页去广告
 
 「无法访问」错误页底部那一条**「热搜榜」**（点进去跳**大米搜索 DJY**，跟用户要访问的站点毫无关系）
 是宿主下发的推广位。它由模板 JS 决定渲染，位置在**混合页**里。
 
-### 链路
+#### 链路
 
 ```
 native chromium 载 res/raw/miuichromium_error_page.html（119 KB，单行）
@@ -555,7 +892,7 @@ HybridActionDispatcher#send(String) → 转调 call(String)
   → 当前线程 dealAction() 并返回其结果 ← 这个字符串就是 JS JSON.parse 的输入
 ```
 
-### 判据（模板里逐字核过）
+#### 判据（模板里逐字核过）
 
 ```js
 e = JSON.parse(o.excuteClientAction("getDefaultPageInfo"));
@@ -573,7 +910,7 @@ if (!d) return 0;                          // 搜索整体关 → 连「重新�
 | `false` | `0` | 「搜索发现」 `search_result` | 同上；`data-action="jump"` → `recommendedWordClick` |
 | `false` | `1` | 「猜你想搜」 `want_search` | `getGuessYouWantToSearchData`；`data-action="jump"` |
 
-### 实现
+#### 实现
 
 `features/ErrorPageFeature.kt`：只挂 `HybridActionDispatcher#call(String)` 的 **after**，在返回值上
 把 `isHotSearchAddImport` 从 `true` / `1` / `!0` 改成假值。**不拦调用本身**，所以：
@@ -589,7 +926,7 @@ if (!d) return 0;                          // 搜索整体关 → 连「重新�
 > 备选方案（留给宿主换版应急）：二进制 patch 模板里的 `excuteClientAction:t}}()`
 > （**全文件唯一**，已用 APK 内原文 sha1 校验）。见 `docs/宿主20.27-hook目标核对.md` §3.5。
 
-### 已排查：错误页里没有别的广告
+#### 已排查：错误页里没有别的广告
 
 模板全文里 `getDefaultPageInfo` / `getHotSearchData` / `getNewHotSearchData` /
 `getGuessYouWantToSearchData` 各出现 **1 次**，`"热搜榜"` / `"搜索发现"` / `"猜你想搜"` 各 **1 次**。
@@ -597,7 +934,13 @@ if (!d) return 0;                          // 搜索整体关 → 连「重新�
 `openTextAnchorAd` / `openLandingPage` / `trackAdEvent` / `getOuterAdData`），**错误页模板一条都没调**
 —— 它们服务于小说页 / 信息流等其它文档流页面，不是错误页的面。
 
-## 搜索广告：1.6.x 定案（在 H5 页面里拦）
+</details>
+
+
+<details>
+<summary><b>搜索广告：为什么最终在 H5 页面里拦</b></summary>
+
+### 搜索广告（在 H5 页面里拦）
 
 搜索框下拉里那三张带「安装」按钮的卡片（「安兔兔评测 / 甘甘云手机 / 豌豆加速」），
 **不在任何 Java 侧列表里** —— 你实测**原版 base.apk 也拦不住**，这条否掉了 1.5.2 的前提。
@@ -631,7 +974,7 @@ if (!d) return 0;                          // 搜索整体关 → 连「重新�
 
 细节、反汇编证据与可复用命令：**`docs/搜索栏广告-根因复核.md`**。
 
-### 怎么拦的：复用宿主自己的 JS 通道
+#### 怎么拦的：复用宿主自己的 JS 通道
 
 反汇编 `com.android.browser.suggestion.SearchSugManager`（classes.dex）：
 
@@ -684,7 +1027,7 @@ if (!d) return 0;                          // 搜索整体关 → 连「重新�
 > 以及挂在 `div.card` 里的那行「查看更多」）。1.6.6 用 `collapse()` 把这类空壳一起塌掉，
 > 并在返回串里新增 `fold`（塌缩了几个容器）和 `more`（「查看更多」入口的路径与最终可见性）两个读数。
 
-### 判读日志
+#### 判读日志
 
 | 日志（TAG `HookBrowser`） | 说明 |
 |---|---|
@@ -705,11 +1048,11 @@ if (!d) return 0;                          // 搜索整体关 → 连「重新�
 | `未找到 WebView#evaluateJavascript` | WebView 类型不符预期，需要换注入方式 |
 | `【诊断】H5 请求 <url> → …` | sug 页面请求清单（去重、封顶 40 条），数据层方案的入口 |
 
-### 历史尝试（全部无效，保留作记录）
+#### 历史尝试（全部无效，保留作记录）
 
 > ⚠ **以下为 1.5.x 的原始设计记录，结论已被 1.6.x 推翻**，仅用于追溯「当时为什么这么写」。
 
-### ① 曾被当成主拦点：短路 `SugCardData#a()`（无效）
+#### ① 曾被当成主拦点：短路 `SugCardData#a()`（无效）
 
 宿主 `SugCardData`（classes.dex）全文反汇编：
 
@@ -739,7 +1082,7 @@ const/4 v0, #0
 setResult(v0)      // = setResult(null)，方法体不执行
 ```
 
-### ②③ 曾被当成兜底：`RecentAppManager`（无效）
+#### ②③ 曾被当成兜底：`RecentAppManager`（无效）
 
 短路 `a()` 有个盲区：**KvPrefs 里的 `display` 可能在模块生效之前就已经被写成了 `true`**，
 此时短路只阻止「再次刷新」，不会把开关关回去。所以再补两道展示层过滤：
@@ -770,12 +1113,12 @@ return ads != null && !TextUtils.isEmpty(ads.getExt());
 `mRecentAppList` 移除；`getRecentAppList()` 之后（UI 取数出口）再过滤一遍。
 只删 `isAd()` 为真的项，对正常应用零影响。
 
-### ④ `HotSearchManager#getHotSearchAdList()` 空表兜底（无效，但留着不亏）
+#### ④ `HotSearchManager#getHotSearchAdList()` 空表兜底（无效，但留着不亏）
 
 宿主 20.27 里「广告热词」这条路径**已经是废代码**（数据源类 `HotSearchAdVersionData`
 在全部 33 个 dex 的 class_defs 里都不存在，只剩悬空引用），留着不亏。
 
-### 排查
+#### 排查
 
 | 日志（TAG `HookBrowser`） | 含义 |
 |---|---|
@@ -799,64 +1142,13 @@ return ads != null && !TextUtils.isEmpty(ads.getExt());
 >   要么收手把无效 hook 清理掉（保底）。
 > - 等于 1（走原生）→ 说明卡片另有原生渲染路径，按 `BaseSuggestionView#onUpdate` 日志继续往上追。
 
----
+</details>
 
-## 宿主版本兼容性
 
-本工程的 hook 目标是对着宿主 **20.27.1010901** 核对的，核对结果：
+<details>
+<summary><b>与原版 base.apk 的差异</b></summary>
 
-| 目标 | 结果 |
-|---|---|
-| 首页推广 2 个类的 5 个方法 | ✅ 全在 |
-| MSA 开屏广告 3 个方法 | ✅ 全在 |
-| UA 3 个方法 | ✅ 全在 |
-| `BrowserSettings` 调试/广告系列 | ✅ 全在（该类 362 个方法） |
-| `Tab$GetSecurityFlagAsyncTask`、`DownloadHandler$1#call` | ✅ 在 |
-| `CommonDownloadDialogImpl#{onCreateDialog, requestGameRecommend}` | ✅ 在 |
-| `SugCardData#a` | ✅ 在（原版 base.apk 的搜索 hook，⚠ 1.6.0 复核判定**与广告无关**） |
-| `RecentAppManager#{initRecentAppList, getRecentAppList}` | ✅ 在（但三个列表长度恒 0，与卡片无关） |
-| `SearchSugManager#mWebView` / `#initSugWebView` / `#querySug` | ✅ 在（**1.6.1 主拦点**：反射取 `mWebView` + 注入 JS） |
-| `SearchSugManager#evaluateSugJS(String)` | ✅ 在（内部就是 `mWebView.evaluateJavascript(js, null)`，佐证注入通道有效） |
-| `SugCardData#requestGameRecommend` | ❌ 不存在 → 已从代码中删除 |
-| `CommonDownloadDialogImpl.mDownloadFromMarket`（字段） | ❌ 已移除 → 已删除 |
-| `ne.y#{b,e,h}`（原以为是广告参数注入点） | ✅ 方法在，但**与广告无关** → 1.5.1 已删除该 hook |
-| `HotSearchAdVersionData` | ❌ 无定义 → 仅作兜底 |
-
-所有 hook 都是「挂不上就跳过 + 打日志」，宿主升级不会崩。想看实际命中情况：
-抓 LSPosed 日志搜 TAG `HookBrowser`，每个 hook 都会打「已挂载 / 未找到」。
-
----
-
-## 编译
-
-1. 用 Android Studio 打开**本工程根目录**（Hedgehog 或更新版本，需要 JDK 17；AS 自带 JBR 即可）。
-2. 直接 `Build > Build APK(s)`。
-
-工程已按国内网络环境配置好：
-
-- Gradle 分发包走腾讯云镜像（`gradle/wrapper/gradle-wrapper.properties`）
-- 依赖仓库 `阿里云 → google → mavenCentral` 依次兜底（`settings.gradle.kts`）
-- **libxposed 两个库都走 Maven Central**：
-  - `compileOnly("io.github.libxposed:api:102.0.0")` —— 宿主进程读开关，运行时由框架提供，不打进 APK。
-  - `implementation("io.github.libxposed:service:102.0.0")` —— 模块进程写开关（1.10.1 起必需），
-    内含 `XposedProvider`，**必须打进 APK**。manifest 里还要声明它：
-    `android:authorities="${applicationId}.XposedService"`（写错 = 静默失效）。
-  - 不再需要 `app/libs/api-82.jar`（1.10.0 已删除）。
-  阿里云 public 仓库有同名 artifact，拉不到时优先查镜像是否同步。
-
-装好后在 LSPosed 里：**勾选「小米浏览器净化」→ 作用域勾 `com.android.browser` → 强行停止并重启小米浏览器**。
-
-> ⚠ **API 102 需要 LSPosed 2.x**（2.2.0 及以上已实测可用）。作用域由
-> `META-INF/xposed/scope.list` 声明（`staticScope=true` 时用户无法在 LSPosed 里额外加包），
-> 所以**不要去 LSPosed 的作用域界面找它**——那里显示的是只读的。
-
-编译级别是 **Java 17**（`sourceCompatibility`/`targetCompatibility`/`jvmTarget` 全为 17），
-与 AGP 8.2.2 自带的 JDK 对齐，因此不会出现 `源值 8 已过时` 这类 javac 警告。
-如果换成 Java 8 反而会重新引出它们 —— 那个警告本身无害，但没必要留着。
-
----
-
-## 与原版 base.apk 的差异
+### 与原版 base.apk 的差异
 
 | 项 | base.apk（原版） | 本工程 |
 |---|---|---|
@@ -870,56 +1162,13 @@ return ads != null && !TextUtils.isEmpty(ads.getExt());
 | `debuggable` | `true` | 未开启 |
 | 体积 | 100 KB（含 89 KB 混淆 dex） | 无混淆，主要体积来自 androidx |
 
----
+</details>
 
-## 目录
 
-```
-XiaomiBrowserTuner/
-├─ app/
-│  └─ src/main/
-│     ├─ AndroidManifest.xml             Activity + XposedProvider；xposed* meta-data 1.10.0 起全部移除
-│     ├─ resources/META-INF/xposed/      API 102 模块声明（模块身份的唯一来源）
-│     │  ├─ module.prop                  minApiVersion=101 / targetApiVersion=102 / staticScope=true
-│     │  ├─ java_init.list               入口类：com.hupan.hookbrowser.MainHook
-│     │  └─ scope.list                   作用域：com.android.browser
-│     ├─ java/com/hupan/hookbrowser/
-│     │  ├─ MainHook.kt                  入口，继承 XposedModule，逐功能注册
-│     │  ├─ Config.kt                    宿主侧开关读取（remote preferences + 缓存 + 默认值表）
-│     │  ├─ ModuleService.kt             模块侧开关**写入**（框架服务 + 本地 SP 全量镜像）
-│     │  ├─ Xp.kt                        自带的反射层（取代旧 XposedHelpers）
-│     │  ├─ Hooks.kt                     hook 封装（Hooker/Chain 拦截器模型 + per-hook 容错）
-│     │  ├─ HostContext.kt               拿宿主 Application（读写宿主私有目录要用）
-│     │  ├─ XLog.kt                      日志（v 详细 / i 关键 / e 异常）+ 框架日志转发层
-│     │  ├─ features/                    11 个功能，一个一文件
-│     │  ├─ adblock/                     规则引擎与宿主规则读写：解析 / 引擎 / CSS / 存储
-│     │  │                               + HostAdRules（读宿主自带规则库）
-│     │  │                               + HostRuleInstaller（改写宿主规则库，接管用）
-│     │  └─ ui/                          SettingsActivity（底部导航容器）+ PrefsFragment（功能栏）
-│     │                                 + AboutFragment（关于栏）+ SwitchRowPreference（自绘开关行）
-│     │                                 + FeatureDetails（每个功能的详情）+ CardGroupDecoration
-│     │                                 + Changelogs（关于页更新日志）+ RuleManagerActivity
-│     ├─ res/xml/prefs.xml               开关定义（key 必须与 Config.kt 一致）
-│     ├─ res/layout/mx_pref_*            功能行布局（switch / link / category）
-│     ├─ res/layout/view_about.xml        「关于」栏内容
-│     ├─ res/layout/dlg_feature_detail.xml 功能详情弹窗
-│     ├─ res/menu/menu_settings_nav.xml   底部导航菜单
-│     ├─ res/color/mx_switch_track.xml    开关滑轨配色
-│     ├─ res/color/mx_nav_item.xml        底部导航选中配色
-│     └─ res/values{,-night}/colors.xml   MIUI X 设计令牌（浅色 / 深色）
-├─ tools/verify_static.py                静态走查（无 JDK 也能跑，交付前必过）
-├─ tools/test_js_filter.js               JS_FILTER 回归测试（node 跑，改注入脚本后必过）
-├─ docs/                                 逆向分析文档
-│  ├─ base.apk-分析报告.md               原 APK 的完整静态分析
-│  ├─ 宿主20.27-hook目标核对.md          hook 目标核对结果（第 2 节含 1.6.0 更正）
-│  ├─ 搜索栏广告-根因复核.md             搜索栏卡片不在 Java 侧的完整证据链
-│  ├─ 胶囊特效统一规范.md                MIUI X 胶囊令牌与动效约定（跨工程通用）
-│  └─ 解锁隐藏设置项-无效根因.md         隐藏设置项解锁失败的原因链
-├─ LICENSE                               许可与免责声明（非开源许可，见文末）
-└─ CHANGELOG.md
-```
+<details>
+<summary><b>交付前静态走查（tools/verify_static.py 覆盖了什么）</b></summary>
 
-## 交付前静态走查
+### 交付前静态走查
 
 本机没有 JDK、不跑构建，所以改动后先跑这个：
 
@@ -952,7 +1201,13 @@ HB_KT=<别的 kt 文件> node tools/test_js_filter.js     # 反向回归：换�
 **连跑 5 轮仍不级联** / 无广告时 `hidden=0`。
 用 1.6.1 的旧 JS 跑会**退出码 1** 并报出「容器 ul 被隐藏（级联回归）」—— 测试不是空跑。
 
-## 加新功能的姿势
+</details>
+
+
+<details>
+<summary><b>加新功能的姿势（贡献代码看这节）</b></summary>
+
+### 加新功能的姿势
 
 1. `features/` 下新建 `XxxFeature : Feature(Config.XXX)`，在 `install()` 里调 `Hooks.hook(...)`，
    回调第一行写 `if (on()) ...`。
@@ -966,8 +1221,11 @@ HB_KT=<别的 kt 文件> node tools/test_js_filter.js     # 反向回归：换�
 
 四处的 key 字符串必须完全一致，否则开关不生效。
 
-## 许可与免责
+</details>
 
+---
+
+## 许可与免责
 **本项目不是开源项目。** 完整条款见 [`LICENSE`](LICENSE)，要点：
 
 - ✅ 允许：阅读代码、为个人学习修改、在自己设备上编译自用。
