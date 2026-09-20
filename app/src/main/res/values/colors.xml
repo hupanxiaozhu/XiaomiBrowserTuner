@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="seed">#2F6FED</color>
+    <color name="ic_launcher_background">#1F2A44</color>
+
+    <!-- ===== MIUI X 设计令牌（浅色）=====
+         页面底色浅灰、内容白卡片、蓝调强调色；深色版在 values-night/colors.xml。
+
+         ⚠ 这组值以多看 DuokanTuner 的 @color/miuix_* 为基准逐值对齐，
+         另两个工程的等价定义在 DuokanTuner/res/values(-night)/colors.xml 与
+         HookFanqie 的 miuix lightColorScheme/darkColorScheme。改一处要三边一起改。 -->
+    <color name="mx_bg">#F2F2F7</color>
+    <color name="mx_card">#FFFFFF</color>
+    <color name="mx_text_primary">#191919</color>
+    <color name="mx_text_secondary">#858585</color>
+    <color name="mx_text_hint">#4D000000</color>
+    <color name="mx_accent">#3482FF</color>
+    <color name="mx_accent_soft">#1F3482FF</color>
+    <color name="mx_divider">#15000000</color>
+    <!-- 开关未选中轨道 / 关闭态胶囊底：实色浅灰（M3 的 surfaceContainerHighest 语义）。
+         原先用的是 #26000000（15% 黑），与多看的实色 #E5E5E5 不是一回事 —— 深色下差别更大 -->
+    <color name="mx_track_off">#E5E5E5</color>
+</resources>

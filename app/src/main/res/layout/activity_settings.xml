@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设置页骨架（1.9.4）：顶部标题区 + 内容容器 + 底部导航栏。
+     内容容器里放两个 Fragment（功能 / 关于），由 SettingsActivity 用 show/hide 切换，
+     标题区的文字跟着一起变。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/mx_bg"
+    android:fitsSystemWindows="true"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_mx_header"
+        android:orientation="vertical"
+        android:paddingStart="22dp"
+        android:paddingTop="18dp"
+        android:paddingEnd="22dp"
+        android:paddingBottom="14dp">
+
+        <TextView
+            android:id="@+id/tv_page_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/pane_features"
+            android:textColor="@color/mx_text_primary"
+            android:textSize="21sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tv_page_sub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:text="@string/pane_features_sub"
+            android:textColor="@color/mx_text_secondary"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/tab_container"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottom_nav"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/mx_card"
+        android:elevation="10dp"
+        app:itemActiveIndicatorStyle="@style/MxNavIndicator"
+        app:itemIconTint="@color/mx_nav_item"
+        app:itemTextColor="@color/mx_nav_item"
+        app:labelVisibilityMode="labeled"
+        app:menu="@menu/menu_settings_nav" />
+</LinearLayout>

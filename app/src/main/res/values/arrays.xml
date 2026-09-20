@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        1.10.0：xposed_scope 数组已删除。
+        libxposed API 101+ 的作用域由 META-INF/xposed/scope.list 声明，manifest / res 里的
+        这份拷贝不再被任何东西读取（留着会让「改哪一份生效」变得含糊）。
+        唯一定义点是 app/src/main/resources/META-INF/xposed/scope.list。
+    -->
+
+    <string-array name="ua_mode_entries">
+        <item>@string/ua_mode_chrome</item>
+        <item>@string/ua_mode_multi</item>
+        <item>@string/ua_mode_desktop</item>
+    </string-array>
+
+    <string-array name="ua_mode_values">
+        <item>chrome</item>
+        <item>multi</item>
+        <item>desktop</item>
+    </string-array>
+
+    <string-array name="search_engine_entries">
+        <item>@string/se_bing</item>
+        <item>@string/se_google</item>
+        <item>@string/se_yandex</item>
+        <item>@string/se_baidu</item>
+    </string-array>
+
+    <string-array name="search_engine_values">
+        <item>bing</item>
+        <item>google</item>
+        <item>yandex</item>
+        <item>baidu</item>
+    </string-array>
+</resources>
+

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- MIUI X：浅灰页面底 + 大圆角白卡片 + 蓝调强调色。
+         colorControlActivated 决定开关打开时的滑轨颜色（androidx 的开关用主题色染色，
+         我们不自绘 switch —— 自绘会与 SwitchPreferenceCompat 自己 inflate 的 widget 打架）。 -->
+    <style name="Theme.HookBrowser" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/mx_accent</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorControlActivated">@color/mx_accent</item>
+        <item name="colorControlNormal">@color/mx_track_off</item>
+        <item name="android:windowBackground">@color/mx_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/mx_bg</item>
+        <!-- windowLightStatusBar 不在这里写：Material3.DayNight 自己按日夜模式给值，
+             无条件写死 true 会让深色模式下的状态栏图标白底白字看不见 -->
+    </style>
+
+    <!-- 底部导航选中项的胶囊指示器。
+         M3 的 ActiveIndicator 默认就是「stadium 形状 + 64×32dp」（shapeAppearance 为
+         ShapeAppearance.Material3.Corner.Full），32dp 高 → 圆角 16dp，与多看自绘底栏胶囊、
+         番茄 CapsuleNavBar 的圆角规则一致；这里只把底色换成我们自己的令牌。
+         改尺寸/形状前先对照 docs/胶囊特效统一规范.md，别把三边其中一个改歪。 -->
+    <style name="MxNavIndicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">@color/mx_accent_soft</item>
+    </style>
+
+    <!-- 功能详情弹窗里的段落小标题与正文 -->
+    <style name="MxDetailLabel">
+        <item name="android:layout_marginTop">16dp</item>
+        <item name="android:textColor">@color/mx_text_secondary</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="MxDetailBody">
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:lineSpacingExtra">4dp</item>
+        <item name="android:textColor">@color/mx_text_primary</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+</resources>

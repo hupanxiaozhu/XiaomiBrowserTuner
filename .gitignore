@@ -1,0 +1,23 @@
+# Android / Gradle
+*.iml
+.gradle/
+.idea/
+build/
+captures/
+.kotlin/
+local.properties
+
+# 构建产物（含 output-metadata.json / baselineProfiles，不入库）
+app/debug/
+app/release/
+*.apk
+*.ap_
+*.dex
+
+# 原生
+.externalNativeBuild/
+.cxx/
+
+# 系统
+.DS_Store
+Thumbs.db

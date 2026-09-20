@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- MIUI X 设计令牌（深色）。只覆盖语义色，不改名 —— 布局里一律引 @color/mx_*。
+         与多看 @color/miuix_* 的 values-night 逐值对齐。 -->
+    <color name="mx_bg">#000000</color>
+    <color name="mx_card">#1C1C1E</color>
+    <color name="mx_text_primary">#FFFFFF</color>
+    <color name="mx_text_secondary">#999999</color>
+    <color name="mx_text_hint">#4DFFFFFF</color>
+    <color name="mx_accent">#4C8DFF</color>
+    <color name="mx_accent_soft">#334C8DFF</color>
+    <color name="mx_divider">#1AFFFFFF</color>
+    <color name="mx_track_off">#3A3A3C</color>
+</resources>

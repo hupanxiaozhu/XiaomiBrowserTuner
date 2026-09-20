@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 顶部标题区：强调色浅浅地往下淡出，和白色卡片拉开层次 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="270"
+        android:endColor="@android:color/transparent"
+        android:startColor="@color/mx_accent_soft" />
+</shape>

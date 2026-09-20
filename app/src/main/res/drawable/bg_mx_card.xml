@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 卡片底。圆角 20dp = 多看 Ui.RADIUS_CARD / 番茄 SectionCard 的同一值（三工程统一）。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/mx_card" />
+    <corners android:radius="20dp" />
+</shape>

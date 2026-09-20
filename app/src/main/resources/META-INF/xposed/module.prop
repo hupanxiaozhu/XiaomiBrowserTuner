@@ -1,0 +1,6 @@
+# libxposed API 102 模块配置（Java properties 格式）
+# 1.10.0：从旧版 manifest meta-data 迁移到这里
+minApiVersion=101
+targetApiVersion=102
+# 只对 scope.list 里声明的包生效，不允许用户额外加作用域
+staticScope=true

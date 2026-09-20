@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">小米浏览器净化</string>
+    <string name="xposed_description">小米浏览器（com.android.browser）去广告与界面精简。所有功能均可单独开关，改动前请先在小范围内验证。</string>
+
+    <!-- 功能页标题 -->
+    <string name="pane_features">功能开关</string>
+    <string name="pane_features_sub">点开关即切换 · 点行看详情 · 改完即时生效</string>
+
+    <!-- 关于面板 -->
+    <string name="about_title">关于</string>
+    <string name="about_sub">版本 · 简介 · 更新日志</string>
+    <string name="about_version">版本 %1$s · versionCode %2$d</string>
+    <string name="about_scope">作用域：com.android.browser（小米浏览器）</string>
+    <string name="about_intro">针对小米浏览器（com.android.browser）的 Xposed / LSPosed 模块：由原版 base.apk 反编译还原后重写，把写死在代码里的去广告逻辑改成「一组功能一个开关」。\n\n每个开关的 hook 目标、判定依据与边界见工程 README 的「功能与开关」一节。</string>
+    <string name="about_changelog">更新日志</string>
+    <string name="about_cl_title">%1$s（versionCode %2$d）</string>
+    <string name="about_cl_more">更早的版本见工程根目录 CHANGELOG.md。</string>
+
+    <!-- 分组 -->
+    <string name="group_ads">去广告</string>
+    <string name="group_ui">界面精简</string>
+    <string name="group_advanced">高级（有副作用）</string>
+
+    <!-- 总开关 -->
+    <string name="pref_master">启用模块</string>
+    <string name="pref_master_sum">关闭后所有 hook 立即失效</string>
+
+    <!-- 开关标题 -->
+    <string name="pref_ad_splash">开屏广告</string>
+    <string name="pref_ad_home_promo">首页推广位</string>
+    <string name="pref_ad_search_sug">搜索推荐广告</string>
+    <string name="pref_ad_error_page_hot">错误页热搜榜</string>
+    <string name="pref_misc_host_ad">宿主广告开关</string>
+    <string name="pref_ui_download">下载弹窗</string>
+    <string name="pref_ua_patch">User-Agent 伪装</string>
+    <string name="pref_misc_unlock_pref">解锁隐藏设置项</string>
+    <string name="pref_misc_debug">浏览器调试模式</string>
+    <string name="pref_misc_security">拦截网址安全检测</string>
+
+    <!-- 开关说明：左栏很窄，说明一律写成一句话；完整原理见 README -->
+    <string name="pref_ad_splash_sum">拦 MSA 联盟开屏广告</string>
+    <string name="pref_ad_home_promo_sum">屏蔽首页推广位与切换引导</string>
+    <string name="pref_ad_search_sug_sum">藏掉搜索下拉里的推广卡片</string>
+    <string name="pref_ad_error_page_hot_sum">摘掉「无法访问」页底部的热搜榜单</string>
+    <string name="pref_misc_host_ad_sum">强制关闭宿主自己的广告判断</string>
+    <string name="pref_ui_download_sum">不建下载弹窗、不推应用、不跳市场</string>
+    <string name="pref_ua_patch_sum">抹掉 UA 里的小米浏览器标识</string>
+    <string name="pref_misc_unlock_pref_sum">⚠ 强制放出宿主设置页的隐藏项</string>
+    <string name="pref_misc_debug_sum">放开宿主调试模式，并输出模块详细日志</string>
+    <string name="pref_misc_security_sum">⚠ 不再提示钓鱼 / 恶意站点</string>
+
+    <!-- UA 模式 -->
+    <string name="pref_ua_mode">UA 伪装模式</string>
+    <string name="ua_mode_chrome">Chrome 移动版（真机信息）</string>
+    <string name="ua_mode_multi">多 App 伪装（搜索/微信）</string>
+    <string name="ua_mode_desktop">桌面版 Chrome</string>
+
+    <!-- 默认搜索引擎 -->
+    <string name="pref_ui_search_engine">默认搜索引擎</string>
+    <string name="pref_ui_search_engine_sum">把必应 / Google / Yandex 内置进切换栏</string>
+    <string name="pref_search_engine_target">选择引擎</string>
+    <string name="se_bing">必应（cn.bing.com，推荐）</string>
+    <string name="se_google">Google（需可访问 Google）</string>
+    <string name="se_yandex">Yandex（需可访问 Yandex）</string>
+    <string name="se_baidu">百度（宿主原生渠道号）</string>
+
+    <!-- 状态 -->
+    <string name="status_active">模块已加载 · 开关修改后立即生效</string>
+    <string name="status_inactive">模块未激活：请在本应用的模块列表中勾选并重启浏览器</string>
+    <string name="status_hint">作用域：com.android.browser（小米浏览器）</string>
+    <string name="status_svc_bound">框架服务已连接（%1$s）· 开关改动即时同步到宿主</string>
+    <string name="status_svc_unbound">框架服务未连接 · 开关改动不会同步到宿主（确认 LSPosed 已启用本模块）</string>
+    <string name="status_svc_unknown">未知框架</string>
+
+    <!-- 自定义拦截规则 -->
+    <string name="pref_ad_custom_rules">自定义拦截规则</string>
+    <string name="pref_ad_custom_rules_sum">按导入的规则过滤：URL 拦截 + 元素隐藏</string>
+    <string name="pref_ad_host_override">接管宿主拦截引擎</string>
+    <string name="pref_ad_host_override_sum">⚠ 用你的规则替换宿主 native 规则库</string>
+    <string name="pref_rule_manager">规则管理</string>
+    <string name="pref_rule_manager_sum">导入、启停、删除规则集</string>
+
+    <!-- 规则管理页 -->
+    <string name="rule_mgr_title">自定义拦截规则</string>
+    <string name="rule_mgr_info_init">正在读取规则库…</string>
+    <string name="rule_mgr_info">%1$d 个规则集 · 请求拦截 %2$d 条 · 元素隐藏 %3$d 条 · 当前启用 %4$d 条</string>
+    <string name="rule_mgr_info_none">还没有导入规则</string>
+    <string name="rule_mgr_from_url">从 URL 导入</string>
+    <string name="rule_mgr_from_file">从本地文件导入</string>
+    <string name="rule_mgr_empty">还没有导入任何规则。\n\n导入后浏览器会在数秒内自动生效，不需要重启，也不需要再开别的开关。</string>
+    <string name="rule_mgr_view">查看</string>
+    <string name="rule_mgr_delete">删除</string>
+
+    <!-- 规则导入 / 管理对话框 -->
+    <string name="rule_dlg_url_title">从 URL 导入规则</string>
+    <string name="rule_dlg_url_hint">https://…/rules.txt</string>
+    <string name="rule_dlg_download">下载并导入</string>
+    <string name="rule_dlg_downloading">正在下载…</string>
+    <string name="rule_dlg_close">关闭</string>
+    <string name="rule_import_ok">已导入「%1$s」：请求拦截 %2$d 条 · 元素隐藏 %3$d 条%4$s</string>
+    <string name="rule_import_skipped">（另有 %1$d 条不合规、%2$d 条超限被丢弃）</string>
+    <string name="rule_import_empty">没有解析出可用规则：元素隐藏 %1$d 条、不合规 %2$d 条。</string>
+    <string name="rule_import_fail">导入失败：%1$s</string>
+    <string name="rule_saved_hint">已保存，浏览器将在数秒内生效</string>
+    <string name="rule_delete_title">删除规则集</string>
+    <string name="rule_delete_msg">确认删除「%1$s」？该规则集的 %2$d 条规则会一并移除，不可撤销。</string>
+    <string name="rule_view_title">%1$s（拦截 %2$d 条 · 隐藏 %3$d 条）</string>
+    <string name="rule_view_more">…\n（还有 %1$d 条未显示）</string>
+    <string name="rule_view_elements">\n—— 元素隐藏（注入 CSS）%1$d 条 ——\n</string>
+
+    <!-- 对话框 -->
+    <string name="dlg_risk_title">确认开启「拦截网址安全检测」？</string>
+    <string name="dlg_risk_msg">该开关会让小米浏览器不再提示钓鱼站、恶意站点，属于降低安全性的改动，仅在你明确知道自己要什么时开启。</string>
+    <string name="dlg_unlock_title">确认开启「解锁隐藏设置项」？</string>
+    <string name="dlg_unlock_msg">该开关会强制宿主设置页里每一个条目都变为可见。它作用于整个设置页，若宿主某条目因机型不受支持而本应隐藏，放出来后点击可能异常；也请记住这是默认关闭的项。</string>
+    <string name="dlg_ok">确认</string>
+    <string name="dlg_cancel">取消</string>
+    <string name="dlg_close">关闭</string>
+
+    <!-- 功能详情弹窗（点开关行里「开关以外的区域」弹出） -->
+    <string name="detail_status_on">当前：已开启</string>
+    <string name="detail_status_off">当前：已关闭</string>
+    <string name="detail_label_purpose">作用</string>
+    <string name="detail_label_target">Hook 目标</string>
+    <string name="detail_label_effect">生效方式</string>
+    <string name="detail_label_caveat">注意事项</string>
+    <string name="detail_toggle_on">开启此功能</string>
+    <string name="detail_toggle_off">关闭此功能</string>
+</resources>

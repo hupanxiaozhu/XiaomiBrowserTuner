@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 只用于「从 URL 导入拦截规则」，模块自身不联网做别的事 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.HookBrowser"
+        android:usesCleartextTraffic="true">
+
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 自定义拦截规则的管理页（导入 / 启停 / 删除），只由模块自己的设置页进入 -->
+        <activity
+            android:name=".ui.RuleManagerActivity"
+            android:exported="false"
+            android:label="@string/rule_mgr_title" />
+
+        <!--
+            框架服务入口（1.10.1 新增，必需）。
+
+            宿主进程读开关走 `XposedInterface#getRemotePreferences`，读的是**框架数据库**；
+            模块 App 要把开关写进去，只能先从这个 ContentProvider 拿到框架送来的
+            `IXposedService` binder（`XposedServiceHelper` 内部接收），再经它写远端组。
+
+            少声明这个 provider 的后果：界面上开关看起来正常，宿主侧永远读到空表 ——
+            「改了不生效」且**不报任何错**（1.10.0 就是这个状态）。
+
+            authorities 必须是 `${applicationId}.XposedService`：框架按这个约定来找 provider，
+            写错同样是静默失效（见 ModuleService）。
+        -->
+        <provider
+            android:name="io.github.libxposed.service.XposedProvider"
+            android:authorities="${applicationId}.XposedService"
+            android:exported="true"
+            tools:ignore="ExportedContentProvider" />
+
+        <!--
+            Xposed 模块声明。
+
+            1.10.0：旧的 xposedmodule / xposedminversion / xposedscope meta-data 全部删除。
+            libxposed API 101+ 的模块身份由 APK 里的 META-INF/xposed/ 目录声明，不再看 manifest：
+
+              META-INF/xposed/module.prop      模块描述（minApiVersion / targetApiVersion / staticScope）
+              META-INF/xposed/java_init.list   入口类名（com.hupan.hookbrowser.MainHook）
+              META-INF/xposed/scope.list       作用域包名（com.android.browser）
+
+            两者不能混用：留着旧声明会让 LSPosed 按「legacy 模块」加载，而 legacy 通道正是
+            那条依赖跨进程读 prefs 文件的老路 —— 开关会读不到，详见 Config 的版本对照表。
+            scope 也一并挪到 scope.list，res/values/arrays.xml 里的字符串数组已删除。
+        -->
+    </application>
+
+</manifest>

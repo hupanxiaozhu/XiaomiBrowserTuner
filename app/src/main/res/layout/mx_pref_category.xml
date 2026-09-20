@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 分组标题（PreferenceCategory 的 android:layout）：卡片外的小字，不做成卡片 -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/title"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingStart="30dp"
+    android:paddingTop="18dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="7dp"
+    android:textColor="@color/mx_text_secondary"
+    android:textSize="12sp"
+    android:textStyle="bold" />

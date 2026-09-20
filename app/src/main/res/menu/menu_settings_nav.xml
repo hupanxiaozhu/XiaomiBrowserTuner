@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 底部导航：左 = 功能操作区，右 = 关于 -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/nav_features"
+        android:icon="@drawable/ic_mx_tab_features"
+        android:title="@string/pane_features" />
+
+    <item
+        android:id="@+id/nav_about"
+        android:icon="@drawable/ic_mx_tab_about"
+        android:title="@string/about_title" />
+</menu>
