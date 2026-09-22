@@ -1,6 +1,10 @@
 plugins {
     // AGP 9 内置 Kotlin：不要再加 org.jetbrains.kotlin.android（会直接报错）
     id("com.android.application")
+    // Compose 编译器（版本由根工程钉死，等于 KGP 2.4.20）
+    id("org.jetbrains.kotlin.plugin.compose")
+    // Route 是 @Serializable 的 NavKey（navigation3 的状态保存依赖它）
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
@@ -15,8 +19,10 @@ android {
         // service 库要求 26（它用到 Android 8.0 起的 API）；模块本身不跑在低版本设备上
         minSdk = 26
         targetSdk = 34
-        versionCode = 32
-        versionName = "1.10.2"
+        // 1.11.0：设置界面按「三 Tab + 二级页」重建（Compose + miuix + navigation3），
+        // 功能开关、配置键、hook 逻辑一行未动。
+        versionCode = 34
+        versionName = "1.11.0"
     }
 
     buildTypes {
@@ -44,13 +50,25 @@ android {
     }
 
     buildFeatures {
-        viewBinding = true
+        // 设置页（1.11.0 起）是 Compose；规则管理页仍是 View（AppCompatActivity + RecyclerView）
+        compose = true
+    }
+
+    packaging {
+        resources {
+            excludes += setOf(
+                "/META-INF/{AL2.0,LGPL2.1}",
+                "/META-INF/DEPENDENCIES",
+                "/META-INF/*.kotlin_module"
+            )
+        }
     }
 
     lint {
         // 只保留真正的错误，压掉 targetSdk/依赖版本之类的噪音警告
         warningsAsErrors = false
         abortOnError = false
+        checkReleaseBuilds = false
     }
 }
 
@@ -68,8 +86,25 @@ dependencies {
     // service 库的方法签名上带 androidx.annotation.@NonNull，显式声明以免依赖传递断了时编不过
     implementation("androidx.annotation:annotation:1.7.1")
 
-    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.core:core-ktx:1.15.0")
+
+    // ---- 界面 ----
+    // 设置页（Compose）需要；也供规则管理页的 AppCompatActivity 使用
+    implementation("androidx.activity:activity-compose:1.13.0")
+    // 规则管理页仍是 View 实现：MaterialAlertDialogBuilder + 布局
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
-    implementation("androidx.preference:preference-ktx:1.2.1")
+
+    // miuix（HyperOS 设计语言的 Compose 实现）。三个模块都来自 Maven Central，无需私仓凭据。
+    implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.3")
+    // 图标集（MiuixIcons.extended.*）：底栏 / 入口行 / 顶栏返回统一走它，不再自绘 vector
+    implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.3")
+    // navigation3 的 miuix 风格转场（NavDisplay 由它传递提供，含 navigation3-ui 依赖）
+    implementation("top.yukonga.miuix.kmp:miuix-navigation3-ui-android:0.9.3")
+    implementation("androidx.navigation3:navigation3-runtime:1.1.4")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+
+    // ⛔ 不要加 miuix-blur：它的 AAR 声明 minSdk 33，本模块 minSdk 26，
+    //    加进来会让 manifest 合并直接失败（界面也没有模糊背板）。
+    // ⛔ 不要再加 androidx.preference：prefs.xml 已随 1.11.0 的界面重建删除。
 }

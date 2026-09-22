@@ -7,9 +7,9 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * 模块开关的宿主侧读取入口。
  *
- * - 写在模块进程：`getSharedPreferences("settings", MODE_PRIVATE)`（见 ui/PrefsFragment）
+ * - 写在模块进程：`getSharedPreferences("settings", MODE_PRIVATE)`（见 ui/SettingsPrefs）
  * - 读在宿主进程：**`XposedInterface#getRemotePreferences("settings")`**（1.10.0 起）
- * - 宿主进程读不到 XML 里的 `app:defaultValue`，所以这里必须维护一份与 prefs.xml 一致的默认值表
+ * - 宿主进程读不到界面的默认值声明，所以这里必须维护一份与设置页（ui/FeatureCatalog.kt）一致的默认值表
  *
  * ## 1.10.0：跨进程开关终于走官方通道
  *
@@ -38,7 +38,7 @@ internal object Config {
     /** remote preferences 组名，与模块设置页写入时用的名字必须一致 */
     const val PREFS_NAME = "settings"
 
-    // ---- 开关 key，必须与 res/xml/prefs.xml 完全一致 ----
+    // ---- 开关 key，必须与 ui/FeatureCatalog.kt 的功能目录完全一致 ----
     /** 总开关：关掉后所有 hook 直接变成 no-op，等于临时卸下模块 */
     const val MASTER = "master_enabled"
     const val AD_SPLASH = "ad_splash"
@@ -61,7 +61,7 @@ internal object Config {
     const val UI_SEARCH_ENGINE = "ui_search_engine"
     const val SEARCH_ENGINE_TARGET = "ui_search_engine_target"
 
-    /** 默认值表：与 prefs.xml 的 app:defaultValue 一一对应 */
+    /** 默认值表：与 ui/FeatureCatalog.kt 的 `Toggle.default` 同源（界面读 [defaultOf]） */
     private val DEFAULTS = linkedMapOf(
         MASTER to true,
         AD_SPLASH to true,
@@ -254,4 +254,12 @@ internal object Config {
 
     /** 供设置页首次运行时铺默认值，保证模块进程与宿主进程看到同一套值 */
     fun defaultEntries(): Map<String, Boolean> = DEFAULTS
+
+    /**
+     * 某个开关的默认值（设置页展示用）。
+     *
+     * 1.11.0 起界面不再读 `prefs.xml` 的 `app:defaultValue`（那份 XML 随界面重建删除），
+     * 默认值只能有一个真源 —— 就是这里。未登记的 key 按保守值 false 处理。
+     */
+    fun defaultOf(key: String): Boolean = DEFAULTS[key] ?: false
 }

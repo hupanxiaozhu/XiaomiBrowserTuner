@@ -94,10 +94,13 @@
 
 ### 设置页
 
-底部导航两栏：
+底部导航三栏（横向分页，左右滑动也能切；返回键先回第一栏）：
 
-- **功能开关** —— 全部开关，按「去广告 / 界面精简 / 高级」分组
-- **关于** —— 版本、作用域、更新日志
+- **功能** —— 去广告 / 界面精简 / 高级三个分区的开关，顶部一张宿主版本比对卡
+- **规则** —— 自定义拦截规则的两个开关 + 规则库概况 + **规则管理**入口
+- **关于** —— 版本与简介，下面是「项目信息 / 更新日志 / 诊断 / 应用设置」四个入口
+
+一级页只放开关与入口，长内容（完整信息表、全部历史更新日志、诊断与重置）都在二级页里。
 
 ### 两套手势（每个功能都自带说明）
 
@@ -333,17 +336,17 @@ XiaomiBrowserTuner/
 │     │  ├─ adblock/                     规则引擎与宿主规则读写：解析 / 引擎 / CSS / 存储
 │     │  │                               + HostAdRules（读宿主自带规则库）
 │     │  │                               + HostRuleInstaller（改写宿主规则库，接管用）
-│     │  └─ ui/                          SettingsActivity（底部导航容器）+ PrefsFragment（功能栏）
-│     │                                 + AboutFragment（关于栏）+ SwitchRowPreference（自绘开关行）
-│     │                                 + FeatureDetails（每个功能的详情）+ CardGroupDecoration
-│     │                                 + Changelogs（关于页更新日志）+ RuleManagerActivity
-│     ├─ res/xml/prefs.xml               开关定义（key 必须与 Config.kt 一致）
-│     ├─ res/layout/mx_pref_*            功能行布局（switch / link / category）
-│     ├─ res/layout/view_about.xml        「关于」栏内容
-│     ├─ res/layout/dlg_feature_detail.xml 功能详情弹窗
-│     ├─ res/menu/menu_settings_nav.xml   底部导航菜单
-│     ├─ res/color/mx_switch_track.xml    开关滑轨配色
-│     ├─ res/color/mx_nav_item.xml        底部导航选中配色
+│     │  └─ ui/                          **Compose 界面（1.11.0 起）**：MainActivity（入口）
+│     │                                 ├ navigation/  Route / Navigator / AppNavigation
+│     │                                 ├ page/        MainPage（三 Tab）+ 功能 / 规则 / 关于
+│     │                                 │              + SettingsPage / ProjectInfoPage
+│     │                                 │              / ChangelogPage / DiagnosticsPage
+│     │                                 ├ component/   DetailDialog / OptionDialog / ConfirmDialog
+│     │                                 ├ theme/ + utils/ + DesignTokens.kt（设计令牌）
+│     │                                 ├ FeatureCatalog.kt  开关目录（详情/分组/更新日志/项目信息）
+│     │                                 ├ SettingsPrefs.kt   本地 SP 读写 + 推框架
+│     │                                 └ RuleManagerActivity + RuleSetAdapter（规则管理，仍是 View）
+│     ├─ res/values/design_tokens.xml    View 侧设计令牌（规则管理页用；Compose 侧读 DesignTokens.kt）
 │     └─ res/values{,-night}/colors.xml   MIUI X 设计令牌（浅色 / 深色）
 ├─ tools/verify_static.py                静态走查（无 JDK 也能跑，交付前必过）
 ├─ tools/test_js_filter.js               JS_FILTER 回归测试（node 跑，改注入脚本后必过）
@@ -427,55 +430,41 @@ UA 有 3 种可选模式：Chrome 移动版（真机信息，默认）／多 App
 <details>
 <summary><b>设置页 UI 与「点开关切换 / 点行看详情」</b></summary>
 
-### 设置页 UI
+### 设置页 UI（1.11.0 起是 Compose + miuix）
 
-底部导航两个 tab：**左「功能开关」/ 右「关于」**，用 `show/hide` 切换（不是 `replace`），
-切回来时滚动位置、装饰器、SP 监听都还在。
+界面在 1.11.0 整体重建：从「`PreferenceFragmentCompat` + 自绘开关行 + XML 版式」
+换成 **Compose + miuix 0.9.3 + navigation3**，与番茄 HookFanqie 1.2.0 同一套架构。
+**功能、开关键、hook 逻辑、规则引擎一行未动。**
 
-- **骨架**：`res/layout/activity_settings.xml` = 顶部标题区（`bg_mx_header` 淡出渐变，
-  标题/副标题随 tab 变）+ `FrameLayout` 内容容器 + `BottomNavigationView`；
-  菜单在 `res/menu/menu_settings_nav.xml`，选中配色 `res/color/mx_nav_item.xml`，
-  选中胶囊底色 `MxNavIndicator`（`themes.xml`，M3 默认走 `colorSecondaryContainer`，这里用自己的令牌）。
-- **左 tab「功能」= `PrefsFragment`**（androidx.preference）：
-  - 每行用自定义布局（`mx_pref_switch.xml` / `mx_pref_link.xml`，分组标题 `mx_pref_category.xml`），
-    **分组卡片**由 `ui/CardGroupDecoration.kt` 画在 RecyclerView 上：组内首行圆上角、末行圆下角、
-    中间行直角（相邻行拼成一张整卡）+ 组内细分隔线 + 组间留白。
-    `PreferenceFragmentCompat` 自带的全宽分隔线装饰会被整体摘掉（它和卡片打架）。
-  - 分组判定用 `PreferenceGroupAdapter.getItem(pos) is PreferenceCategory` —— 那是**库自己的
-    可见顺序**（会跳过 `app:dependency` 不满足而隐藏的项），自己遍历 `PreferenceScreen` 会错位。
-- **交互：点开关 = 切换，点行里其它地方 = 看详情**。这一条决定了不能用库自带的
-  `SwitchPreferenceCompat`：
-  - 它注入进行布局 `android:id/widget_frame` 的开关（`preference_widget_switch_compat.xml`）写死了
-    `android:clickable="false"` —— 点开关等于点整行，两条路径分不开；
-  - 它继承的 `TwoStatePreference#onClick` 把「整行点击」直接当切换，行点击腾不出来。
-  所以功能行改用自绘的 **`ui/SwitchRowPreference`（继承 `TwoStatePreference`）**：
-  - `onClick()` 覆盖成**空**（行点击不再切换），`Preference#performClick()` 的顺序是
-    先 `onClick()` 再 `onPreferenceClickListener`，所以行点击照样落到「看详情」上；
-  - 开关自己在行布局里画（`MaterialSwitch`，`@+id/hb_switch`），`onBindViewHolder` 里
-    **先摘 `OnCheckedChangeListener` 再回填状态**（ViewHolder 复用，否则回填会被当成用户操作写盘）；
-  - 点开关走 `callChangeListener(value)` —— 危险开关的确认框挂在那儿，被否就把手柄弹回。
-  - 详情内容在 `ui/FeatureDetails.kt`（作用 / Hook 目标 / 生效方式 / 注意事项），弹窗用
-    `dlg_feature_detail.xml`，底部按钮可以直接切换该项。数据用 `Config` 的常量当键，
-    改 key 时对不上会立刻发现。
-  - **1.9.6 起点「切换」不关窗**：原地刷新顶部状态胶囊（220ms 底色/文字色过渡）并翻转按钮文案，
-    可以连着点几下看效果。两个风险开关的确认框是异步落盘的，弹窗会在 SP 变化时重新对齐
-    （自己发起的写入要挡掉，否则动画会被同一帧拍回终态）。
-  - ⚠ 下拉行（`ListPreference`）与「规则管理」入口的**行点击是主操作**（开下拉 / 进页面），
-    所以详情只挂在开关行上。
-- **右 tab「关于」= `AboutFragment`**：版本（`versionName · versionCode`，运行时读 `PackageManager`）/
-  简介 / 作用域 / **框架服务连接状态**（1.10.1 起：未连接 = 开关改动不会同步到宿主）/ 更新日志
-  （`ui/Changelogs.kt`，与本仓库 `CHANGELOG.md` 同源，只留最近几版）。
-  1.10.0 起**不再显示「开关文件权限」** —— remote preferences 通道下不存在这个失败点。
-- **设计令牌**：`mx_bg` `mx_card` `mx_text_primary|secondary|hint` `mx_accent` `mx_accent_soft`
-  `mx_divider` `mx_track_off`；浅色 `values/colors.xml`、深色 `values-night/colors.xml`。
-  **1.9.6 起这组值以多看调谐器的 `@color/miuix_*` 为基准逐值对齐** ——
-  改任何一个值都要同时改 DuokanTuner 与 HookFanqie，详见 `docs/胶囊特效统一规范.md`。
-  主题 `Theme.HookBrowser` 是 Material3.DayNight.NoActionBar。**状态栏图标明暗不写死** ——
-  Material3.DayNight 自己按日夜给值，写死 true 会让深色模式下状态栏白底白字看不见。
-- **胶囊**（1.9.6 统一）：形状一律 stadium（圆角 = 高度 / 2）。
-  标签胶囊高 22dp / 圆角 11dp（`bg_mx_pill` + `bg_mx_pill_off`）；
-  底栏选中态走 M3 的 `itemActiveIndicatorStyle`（`MxNavIndicator`，64×32dp 全圆角）。
-  块的圆角是另一套：卡片 20dp（`bg_mx_card` + `CardGroupDecoration`）、内容块 12dp（`bg_mx_block`）。
+- **壳**：`MainActivity` 只做两件事 —— 套 `BrowserTheme`（miuix 色板）+ 挂 `AppNavigation`
+  （navigation3 返回栈）。主题只套一层，页面内部不再自建。
+- **三 Tab**：`MainPage` = `Scaffold(底栏 NavigationBar)` + `HorizontalPager`；
+  **每个 Tab 自带 `Scaffold + TopAppBar`**（大标题随列表滚动收起）—— 外层给底栏内边距、
+  内层给顶栏内边距，两者相加由 `ui/utils/Page.kt` 的 `pageContentPadding` 统一算，
+  页面左右边距也由它给（卡片是 `fillMaxWidth()`，不给就贴屏幕边）。
+- **返回栈**：**只有二级页走路由** —— `Route` 是 `@Serializable` 的 `NavKey`
+  （旋转屏幕、进程回收后能回到原页面）；切 Tab 不进栈，返回键先回第一个 Tab 再逐层出栈。
+- **信息架构**：一级页只放开关 + 入口。完整信息表在「项目信息」页、全部历史日志在
+  「更新日志」页（默认逐条收起）、框架服务状态与「复制当前状态」在「诊断」页、
+  「恢复默认开关」在「应用设置」页 —— 设置入口放关于页，功能页顶栏只留标题。
+- **交互不变：点开关 = 切换，点卡片其它地方 = 看详情**。自绘 `Row` 而不用库的
+  `SwitchPreference`：它整行的 `onClick` 就是切换，两条路径分不开。
+- **三个浮层都是自绘 Box 叠层**（详情 / 单选 / 风险确认）：
+  miuix 的 `WindowDialog` 内容区走 navigationevent 的预测性返回，要求宿主提供
+  `NavigationEventDispatcherOwner`，**模块自己的 Activity 没有，一点就崩** ——
+  自绘不新建窗口、不碰 navigationevent，彻底没有这条崩溃路径。
+  详情浮层里点「关闭本项 / 开启本项」**不关窗**（可连着点几下看效果）。
+- **开关状态单点持有**：`ToggleState`（`SnapshotStateMap` + `SettingsPrefs`）。
+  关在页面 `remember` 里的话，从「应用设置」页重置后返回主界面列表不会刷新。
+  两个下拉（UA 模式 / 搜索引擎）是字符串开关，与布尔分开存。
+- **写端不变**：本地 SP 是唯一真源，每次写入后经 `ModuleService` 把整组
+  **全量镜像**到框架数据库；宿主进程读的就是那份（见「开关跨进程」一节）。
+- **设计令牌**：`ui/DesignTokens.kt`（Compose 侧），与番茄的同名文件、多看的
+  `res/values/design_tokens.xml` 三边同源；胶囊仍是 stadium，规格见 `docs/胶囊特效统一规范.md`。
+- **构建上的一处硬约束**：AGP 9 内置 Kotlin 是 **2.2.10**，而 miuix 0.9.3 由 Kotlin 2.4.0
+  编译、依赖 compose foundation 1.11.1，内置版本读不了。只能**向上覆盖**：
+  根 `build.gradle.kts` 的 `buildscript` 里放 `kotlin-gradle-plugin:2.4.20`，
+  Compose 编译器插件版本与它相等（2.4.20）。⛔ `miuix-blur` 不能加（minSdk 33 vs 26）。
 
 #### 这套 UI 已固化为跨栈规范
 
@@ -487,8 +476,8 @@ UA 有 3 种可选模式：Chrome 移动版（真机信息，默认）／多 App
 
 | 栈 | 参考实现 |
 |---|---|
-| Kotlin + XML + androidx.preference | **本工程**（`ui/SwitchRowPreference` + `ui/CardGroupDecoration` + `ui/FeatureDetails`） |
-| Kotlin + Compose + `top.yukonga.miuix` | `HookFanqie`（番茄小说模块）→ `ui/SettingsScreen.kt` |
+| Kotlin + Compose + `top.yukonga.miuix` | **本工程**（1.11.0 起：`ui/FeatureCatalog.kt` + `ui/page/`）与 `HookFanqie`（番茄小说模块） |
+| Kotlin + XML + androidx.preference | 本工程 1.10.x 的旧实现（已随 1.11.0 删除；`ui/SwitchRowPreference` 那套） |
 | Java 全自绘（`Ui.java` 工具集） | `DuokanTuner`（多看阅读模块）→ `Ui.java` + `FeatureDetails.java` |
 
 三份代码**不能互相复制**（组件模型完全不同），能复用的是令牌、尺寸与交互约定。
@@ -1239,14 +1228,15 @@ HB_KT=<别的 kt 文件> node tools/test_js_filter.js     # 反向回归：换�
 1. `features/` 下新建 `XxxFeature : Feature(Config.XXX)`，在 `install()` 里调 `Hooks.hook(...)`，
    回调第一行写 `if (on()) ...`。
 2. `Config.kt` 加 key 常量 + 默认值。
-3. `res/xml/prefs.xml` 加一条 `<com.hupan.hookbrowser.ui.SwitchRowPreference>`（开关行，
-   `android:layout="@layout/mx_pref_switch"`；工具的正则认这个类名）。
-4. `res/values/strings.xml` 加标题与说明；`ui/FeatureDetails.kt` 补一条详情
-   （不补也能跑，只是点行不弹详情）。
-5. `Features.ALL` 里注册。
-6. `versionCode` / `versionName` 递增，`CHANGELOG.md` 补条目。
+3. `ui/FeatureCatalog.kt` 的 `FUNCTION_TOGGLES` 加一条 `Toggle(key / 标题 / 说明 / 详情)`，
+   并把 key 登记进对应的分区表（`AD_TOGGLES` / `UI_TOGGLES` / `RULES_TOGGLES` /
+   `ADVANCED_TOGGLES`）—— **漏登记 = 界面上根本不显示这一项**（静态走查第 2 项会拦）。
+4. `Features.ALL` 里注册。
+5. `versionCode` / `versionName` 递增，`CHANGELOG.md` 与 `ui/FeatureCatalog.kt` 的
+   `CHANGELOGS` 各补一条。
 
-四处的 key 字符串必须完全一致，否则开关不生效。
+开关 key 在 `Config.kt`（常量 + 默认值表）与 `ui/FeatureCatalog.kt`（目录）两处必须一致，
+默认值只写一份（`Config.defaultOf` 是唯一真源）；改完跑 `tools/verify_static.py`。
 
 </details>
 

@@ -4,9 +4,10 @@
 
 检查项：
   1. 代码里 R.xxx 引用的资源是否都定义了
-  2. prefs.xml 的 app:key 与 Config.kt 常量值是否一一对应
-  3. 默认值表（Config.kt DEFAULTS）与 prefs.xml 的 app:defaultValue 是否一致
-  4. prefs.xml / AndroidManifest.xml 引用的 @string @array @style ... 是否存在
+  2. 功能开关目录（ui/FeatureCatalog.kt）的 app:key 与 Config.kt 常量值是否一一对应
+     （1.11.0 起开关清单不再是 res/xml/prefs.xml —— 界面改 Compose 后那份 XML 已删除）
+  3. 默认值表（Config.kt DEFAULTS）与功能目录覆盖的开关是否一致
+  4. AndroidManifest.xml 引用的 @string @array @style ... 是否存在
   5. Manifest 引用是否都能解析；manifest 里不得残留 xposed* legacy 声明
   6. META-INF/xposed/{module.prop,java_init.list,scope.list} 与入口类、宿主包名对齐，
      且全工程不再出现 de.robv 旧 API 的可执行引用
@@ -17,8 +18,8 @@
   9. Manifest 里声明的 Activity 是否有对应源码文件
  10. 规则库 SP 文件名三处一致（模块进程写、宿主进程读；写错不报错，只会「导入了但不生效」）
  11. 粗粒度语法体检：剥掉注释/字符串后 kt 的 () [] {} 是否平衡、每个 xml 能否被 ElementTree 解析
-  12. 自绘开关行（ui/SwitchRowPreference）与 ui/FeatureDetails.kt 的详情表一一对应
-      （漏一条 = 那一行点了没反应，多一条 = 死代码；两者都不报错，只能静态钉死）
+  12. 开关目录里的每一项都登记进分区表、且都写了详情
+     （漏登记 = 界面上根本不显示这一项；漏详情 = 点开是空弹窗；两者都不报错）
 
 用法：python tools/verify_static.py   （退出码 0 = 全部通过）
 """
@@ -83,64 +84,89 @@ for dirpath, _, files in os.walk(JAVA):
                 problems.append('资源缺失：R.%s.%s（被 %s 引用）' % (kind, name, where_rel(p)))
 
 # ---------- 3. prefs.xml 的 key 与 Config.kt 常量值对齐 ----------
-prefs_txt = open(os.path.join(RES, 'xml', 'prefs.xml'), encoding='utf-8').read()
-# 只取「开关类」条目（SwitchPreferenceCompat / ListPreference）的 key。
-# 普通 <Preference> 是跳转入口（如「自定义拦截规则」管理页），没有对应布尔开关，
-# 让它的 key 参与对齐检查只会逼着人去 Config.kt 里补一个没意义的常量。
-xml_keys = set()
-# 开关类条目：库自带的 SwitchPreferenceCompat / ListPreference，以及自绘的
-# com.hupan.hookbrowser.ui.SwitchRowPreference（1.9.4 起的功能行）
-for _m in re.finditer(
-        r'<(SwitchPreferenceCompat|ListPreference|[\w.]+SwitchRowPreference)\b(.*?)/>',
-        prefs_txt, re.S):
-    _k = re.search(r'app:key="([^"]+)"', _m.group(2))
-    if _k:
-        xml_keys.add(_k.group(1))
+# 1.11.0：界面改为 Compose，开关清单从 res/xml/prefs.xml 迁到 ui/FeatureCatalog.kt
+# 的 FUNCTION_TOGGLES（点行弹详情、分区摆放都由它驱动）。prefs.xml 已删除，
+# 这里改成拿功能目录当真源来对齐 Config.kt。
+CATALOG = os.path.join(PKG_DIR, 'ui', 'FeatureCatalog.kt')
+cat = open(CATALOG, encoding='utf-8').read()
 
 cfg = open(os.path.join(PKG_DIR, 'Config.kt'), encoding='utf-8').read()
 cfg_map = dict(re.findall(r'const val (\w+) = "([^"]+)"', cfg))
 
-# 开关 key = 全大写常量，排除包名/SP 文件名/默认值这类非开关常量
+# 开关 key = 全大写常量，排除包名 / SP 文件名这类非开关常量。
+# 下面三类不在布尔目录里，各自有单独的载体：
+#   UA_MODE / SEARCH_ENGINE_TARGET —— 字符串开关，由 ui/FeatureCatalog.kt 的选项表驱动；
+#   MASTER —— 总闸，界面上是 hero 卡（详情为 MASTER_DETAIL），不进 FUNCTION_TOGGLES。
 NON_SWITCH = ('MODULE_PKG', 'PREFS_NAME')
+EXTRA_KEYS = ('UA_MODE', 'SEARCH_ENGINE_TARGET', 'MASTER')
 switch_keys = {v for k, v in cfg_map.items()
-               if k.isupper() and k not in NON_SWITCH and not k.endswith('_DEFAULT')}
-# ua_mode 是 ListPreference，不在布尔开关表里，需要单独排除
-for k in ('UA_MODE',):
-    switch_keys.discard(cfg_map.get(k, ''))
-    xml_keys.discard(cfg_map.get(k, ''))
+               if k.isupper() and k not in NON_SWITCH
+               and k not in EXTRA_KEYS and not k.endswith('_DEFAULT')}
 
-if switch_keys != xml_keys:
-    problems.append('开关 key 不一致：仅 Config.kt 有 %s；仅 prefs.xml 有 %s'
-                    % (sorted(switch_keys - xml_keys), sorted(xml_keys - switch_keys)))
+# 总闸虽不在目录里，但界面必须展示它（hero 卡）且必须有详情
+# 总闸的开关值由 ui/page/features/FeaturesPage.kt 读、详情由 MASTER_DETAIL 提供，
+# 两者缺一个都会出现「hero 卡点了没反应 / 详情是空的」
+if 'MASTER_DETAIL' not in cat:
+    problems.append('功能目录缺少 MASTER_DETAIL（总闸的「点行看详情」内容）')
+_master_used = False
+for _dp, _, _fs in os.walk(os.path.join(PKG_DIR, 'ui')):
+    for _f in _fs:
+        if _f.endswith('.kt') and 'Config.MASTER' in open(
+                os.path.join(_dp, _f), encoding='utf-8').read():
+            _master_used = True
+if not _master_used:
+    problems.append('界面没有读 Config.MASTER（总闸开关没接上界面）')
 
-# 默认值表 vs prefs.xml 的 defaultValue
-xml_defaults = {}
-for blk in re.finditer(
-        r'<(?:SwitchPreferenceCompat|[\w.]+SwitchRowPreference)\b(.*?)/>', prefs_txt, re.S):
-    b = blk.group(1)
-    k = re.search(r'app:key="([^"]+)"', b)
-    v = re.search(r'app:defaultValue="(\w+)"', b)
-    if k and v:
-        xml_defaults[k.group(1)] = (v.group(1) == 'true')
+# 目录里的开关：`key = Config.XXX`（Toggle 数据类；OptionItem 用 UaBuilder / SearchEngines）
+catalog_keys = {cfg_map.get(n, n) for n in re.findall(r'key = Config\.(\w+)', cat)}
 
+# 分区表（去广告 / 界面精简 / 规则 / 高级）：漏登记 = 界面上根本不显示这一项
+section_keys = set()
+for _m in re.finditer(r'internal val \w+_TOGGLES = FUNCTION_TOGGLES\.filter \{(.*?)\n\}',
+                      cat, re.S):
+    section_keys |= {cfg_map.get(n, n) for n in re.findall(r'Config\.(\w+)', _m.group(1))}
+
+if switch_keys != catalog_keys:
+    problems.append('开关 key 不一致：仅 Config.kt 有 %s；仅功能目录有 %s'
+                    % (sorted(switch_keys - catalog_keys), sorted(catalog_keys - switch_keys)))
+
+if catalog_keys != section_keys:
+    problems.append('分区表与功能目录不一致：未登记进任何分区 %s；分区表里的死引用 %s'
+                    % (sorted(catalog_keys - section_keys), sorted(section_keys - catalog_keys)))
+
+# 默认值表 vs 功能目录：目录里的每一项都得在默认值表里有，
+# 否则宿主侧只能拿到构造默认值 false，而界面上显示的又是另一套。
 cfg_defaults = {}
 ksec = re.search(r'DEFAULTS = linkedMapOf\((.*?)\)', cfg, re.S)
 for m in re.finditer(r'(\w+) to (true|false)', ksec.group(1)):
     cfg_defaults[cfg_map.get(m.group(1), m.group(1))] = (m.group(2) == 'true')
 
-for k in xml_defaults:
-    if k in cfg_defaults and cfg_defaults[k] != xml_defaults[k]:
-        problems.append('默认值不一致 %s：prefs.xml=%s Config.kt=%s'
-                        % (k, xml_defaults[k], cfg_defaults[k]))
+# 总开关（MASTER）是 hero 卡，不在 FUNCTION_TOGGLES 里，但必须在默认值表内
+for k in catalog_keys | {cfg_map.get('MASTER', 'master_enabled')}:
+    if k not in cfg_defaults:
+        problems.append('功能目录里的 %s 在 Config.kt 默认值表中没有对应项' % k)
 for k in cfg_defaults:
-    if k not in xml_defaults:
-        problems.append('Config.kt 默认值表里的 %s 在 prefs.xml 中没有对应开关' % k)
+    if k not in catalog_keys and k != cfg_map.get('MASTER', 'master_enabled'):
+        problems.append('Config.kt 默认值表里的 %s 在功能目录中没有对应开关' % k)
 
-# ---------- 4. prefs.xml 引用的 @string / @array ----------
-for m in re.finditer(r'@(string|array)/([\w.]+)', prefs_txt):
-    kind = 'array' if m.group(1) == 'array' else 'string'
-    if m.group(2) not in defs[kind]:
-        problems.append('prefs.xml 引用了不存在的 @%s/%s' % (m.group(1), m.group(2)))
+# ---------- 4. 字符串开关的选项表与常量对齐 ----------
+# UA 模式 / 搜索引擎走 ui/FeatureCatalog.kt 的选项表，key 取 UaBuilder / SearchEngines
+# 的常量。写错一个字母 = 下拉里那一项点了没反应，不报错。
+_opt_pairs = (
+    ('UA_OPTIONS', os.path.join(PKG_DIR, 'features', 'UaFeature.kt'), r'const val MODE_\w+'),
+    ('SEARCH_ENGINE_OPTIONS', os.path.join(PKG_DIR, 'features', 'SearchEngineFeature.kt'),
+     r'const val (?:BING|GOOGLE|YANDEX|BAIDU)\b'),
+)
+for _name, _path, _pat in _opt_pairs:
+    _block = re.search(r'internal val %s = listOf\((.*?)\n\)' % _name, cat, re.S)
+    if not _block:
+        problems.append('功能目录缺少选项表 %s' % _name)
+        continue
+    _src = open(_path, encoding='utf-8').read()
+    _consts = set(re.findall(r'const val (\w+) = "', _src))
+    for _ref in re.findall(r'(?:UaBuilder|SearchEngines)\.(\w+)', _block.group(1)):
+        if _ref not in _consts:
+            problems.append('选项表 %s 引用了不存在的常量 %s' % (_name, _ref))
 
 # ---------- 5. Manifest 引用 ----------
 man = open(MANIFEST, encoding='utf-8').read()
@@ -279,12 +305,20 @@ def _top_members(body):
     return names
 
 
-symbols = set()   # 本项目所有顶层 object / class 名
+symbols = set()   # 本项目所有顶层 object / class / val / fun 名
 members = {}      # object 名 -> 其成员集合
 for p in kt_files:
     src = _strip_comments(open(p, encoding='utf-8').read())
     for m in re.finditer(r'^(?:internal\s+|private\s+)?(?:abstract\s+|sealed\s+|open\s+)?'
                          r'(?:object|class|interface|enum class)\s+(\w+)', src, re.M):
+        symbols.add(m.group(1))
+    # 顶层 val / fun 也能被 import（设计令牌、开关目录、页面工具都是这种形态），
+    # 不收进来的话「import com.hupan.hookbrowser.ui.DsSpace」会被误判成无法解析
+    for m in re.finditer(r'^(?:internal\s+|private\s+)?(?:const\s+)?val\s+(\w+)', src, re.M):
+        symbols.add(m.group(1))
+    # 扩展函数（如 `internal fun Modifier.pageScroll`）同样可被 import
+    for m in re.finditer(r'^(?:internal\s+|private\s+)?fun\s+(?:[\w<>?,: ]*\.)?(\w+)\s*\(',
+                         src, re.M):
         symbols.add(m.group(1))
     for m in re.finditer(r'^(?:internal\s+)?object\s+(\w+)', src, re.M):
         brace = src.find('{', m.end())
@@ -298,6 +332,8 @@ EXTERNAL_NAMES = {'Log'}
 
 for p in kt_files:
     src = _strip_comments(open(p, encoding='utf-8').read())
+    # 枚举项的成员（`MainTab.Features.label`）不是 object 成员，别拿去交叉核对
+    src = re.sub(r'\bMainTab\.\w+\.\w+', 'MainTab.ENUM', src)
     for name in sorted(members):
         if name in EXTERNAL_NAMES:
             continue
@@ -373,22 +409,15 @@ elif store_name != channel_name:
     problems.append('规则库组名两处不一致：AdRuleStore=%r AdRuleChannel=%r'
                     % (store_name, channel_name))
 
-# ---------- 12. 开关行与「详情表」一一对应 ----------
-# 1.9.4 起功能行是自绘的 SwitchRowPreference：「点行看详情」靠 FeatureDetails 的键挂上去
-# （PrefsFragment#bindDetails 用 findPreference 找，找不到就静默跳过）。
-# 少一条 = 那一行点了没反应；多一条 = 死代码。两者都不会报错，只能静态钉死。
-_row_keys = set()
-for _m in re.finditer(r'SwitchRowPreference\b(.*?)/>', prefs_txt, re.S):
-    _k = re.search(r'app:key="([^"]+)"', _m.group(1))
-    if _k:
-        _row_keys.add(_k.group(1))
-_fd_path = os.path.join(PKG_DIR, 'ui', 'FeatureDetails.kt')
-if _row_keys and os.path.exists(_fd_path):
-    _fd = open(_fd_path, encoding='utf-8').read()
-    _detail_keys = {cfg_map.get(_n, _n) for _n in re.findall(r'Config\.(\w+) to Detail', _fd)}
-    if _row_keys != _detail_keys:
-        problems.append('功能详情表与开关行不一致：缺详情 %s；多余详情 %s'
-                        % (sorted(_row_keys - _detail_keys), sorted(_detail_keys - _row_keys)))
+# ---------- 12. 每一项开关都写了详情 ----------
+# 1.11.0 起「点行弹详情」由 ui/FeatureCatalog.kt 的 Toggle.detail 驱动（Compose 界面的
+# 浮层读它）。少一条 = 点开是空弹窗；多一条 = 死代码。两者都不会报错，只能静态钉死。
+# 末尾的 `\n` 用来区分「数据类的定义」与「目录里的条目」：定义那行是 `class Toggle(`
+_toggle_count = len(re.findall(r'(?<!class )\bToggle\(\n', cat))
+_detail_count = len(re.findall(r'detail = Detail\(', cat))
+if _toggle_count != _detail_count:
+    problems.append('功能目录里有 %d 条开关、%d 条详情 —— 二者必须一一对应'
+                    % (_toggle_count, _detail_count))
 
 # ---------- 13. 粗粒度语法体检 ----------
 # 本机没有 JDK、不跑构建，漏一个括号以前只有到 Android Studio 里才暴露。
@@ -539,8 +568,9 @@ for _dp, _, _fs in os.walk(RES):
 
 # ---------- 输出 ----------
 print('=== 开关 key 对齐 ===')
-print('  Config.kt : %s' % sorted(switch_keys))
-print('  prefs.xml : %s' % sorted(xml_keys))
+print('  Config.kt   : %s' % sorted(switch_keys))
+print('  功能目录     : %s' % sorted(catalog_keys))
+print('  分区表已登记 : %s' % sorted(section_keys))
 print('\n=== 检查结果 ===')
 if problems:
     for p in problems:

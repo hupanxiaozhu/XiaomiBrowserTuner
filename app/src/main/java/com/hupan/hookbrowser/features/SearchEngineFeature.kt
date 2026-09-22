@@ -329,7 +329,7 @@ internal object SearchEngines {
     const val YANDEX = "yandex"
     const val BAIDU = "baidu"
 
-    /** 默认值，与 prefs.xml 的 `app:defaultValue` + arrays.xml 的 `search_engine_values` 保持一致 */
+    /** 默认值；界面上的可选项见 ui/FeatureCatalog 的 SEARCH_ENGINE_OPTIONS */
     const val DEFAULT = BING
 
     /**

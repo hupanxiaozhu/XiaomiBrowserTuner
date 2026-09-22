@@ -10,9 +10,26 @@ local.properties
 # 构建产物（含 output-metadata.json / baselineProfiles，不入库）
 app/debug/
 app/release/
+release/
 *.apk
 *.ap_
 *.dex
+*.dm
+
+# 签名材料（绝不入库）
+*.jks
+*.keystore
+*.p12
+keystore.properties
+signing.properties
+
+# 本地临时 / 备份
+*.bak
+*.bak-*
+*.orig
+*.rej
+.tmp/
+.tmp_*
 
 # 原生
 .externalNativeBuild/
@@ -21,3 +38,4 @@ app/release/
 # 系统
 .DS_Store
 Thumbs.db
+desktop.ini

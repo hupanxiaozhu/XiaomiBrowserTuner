@@ -1,5 +1,81 @@
 # Changelog
 
+## 1.11.0 (versionCode 34) —— 设置界面重建为「三 Tab + 二级页」（Compose + miuix）
+
+### 改了什么
+
+界面整体重建。**功能、开关键、hook 逻辑、规则引擎一行未动**，只动界面层与构建配置。
+
+| 类别 | 之前（1.10.3） | 现在（1.11.0） |
+|---|---|---|
+| 技术栈 | `PreferenceFragmentCompat` + 自绘 `SwitchRowPreference` + XML 版式 | Compose + miuix 0.9.3 + navigation3（与番茄 HookFanqie 1.2.0 同架构） |
+| 页面结构 | 底部导航两栏（功能 / 关于），关于页把信息表与更新日志全铺开 | 三 Tab（功能 / 规则 / 关于）+ 横向分页；项目信息 / 更新日志 / 诊断 / 应用设置四个二级页走真正的返回栈 |
+| 一级页 | 关于页两屏多 | 只放开关 + 入口，基本一屏看完（长内容全部下沉） |
+| 详情弹窗 | `MaterialAlertDialogBuilder` + `dlg_feature_detail.xml` | 自绘 Box 叠层（切 Tab / 进二级页回来状态一致；切换后不关窗） |
+| 下拉项 | `ListPreference`（UA 模式 / 搜索引擎） | 卡片行 + 自绘单选浮层，跟随母开关置灰 |
+| 开关数据 | `res/xml/prefs.xml` + `ui/FeatureDetails.kt` + `ui/Changelogs.kt` 三处 | 合到 `ui/FeatureCatalog.kt`（目录 / 详情 / 分区 / 更新日志 / 项目信息） |
+| 规则管理 | 功能页里的一个入口项 | 独立「规则」Tab：两个开关 + 规则库概况卡 + 入口（页面本身仍是 View 实现） |
+| Kotlin | AGP 9 内置 2.2.10 | 覆盖到 2.4.20（miuix 0.9.3 由 Kotlin 2.4.0 编译、依赖 compose foundation 1.11.1） |
+
+### 实现要点
+
+- 新增 `ui/{MainActivity,DesignTokens,FeatureCatalog,SettingsPrefs}.kt`、
+  `ui/{theme,navigation,utils,component}/`、`ui/page/{MainPage,MainTabPolicy,ToggleState}`
+  与 `ui/page/{features,rules,about}/`、四个二级页。
+- 每个 Tab 自带 `Scaffold + TopAppBar`；页面左右边距与「顶栏 + 底栏」安全区统一由
+  `ui/utils/Page.kt` 的 `pageContentPadding` 给（卡片是 `fillMaxWidth()`，不给就贴屏边）。
+- 开关状态提到 `ToggleState` 单点持有：`SnapshotStateMap` + `SettingsPrefs`（本地 SP 是唯一真源，
+  每次写入后经 `ModuleService` 全量镜像到框架数据库）。设置页「恢复默认」后返回主界面立刻同步。
+- ⛔ 三个浮层（详情 / 单选 / 风险确认）全部自绘：**不用** miuix 的 `WindowDialog` —— 它走
+  navigationevent 的预测性返回，要求宿主提供 `NavigationEventDispatcherOwner`，模块自己的
+  Activity 没有，一点就崩。
+- ⛔ `miuix-blur` 没加（AAR 声明 minSdk 33，本模块 minSdk 26，加了 manifest 合并直接失败）。
+- 删除：`SettingsActivity` / `PrefsFragment` / `AboutFragment` / `SwitchRowPreference` /
+  `CardRowDecoration` / `FeatureDetails` / `Changelogs`、`res/xml/prefs.xml`、
+  `res/menu`、`res/color`、七个旧 layout、`arrays.xml` 与一批不再引用的 drawable / string。
+  `res/values/design_tokens.xml` 保留（三工程对账脚本仍读它）；`themes.xml` 只剩主题本身。
+- `tools/verify_static.py` 跟着改：开关 key 对齐的真源从 `prefs.xml` 换成 `ui/FeatureCatalog.kt`
+  （新增「分区表是否漏登记」「详情是否漏写」「选项表常量是否存在」三项），
+  符号交叉检查补上顶层 `val` / 扩展函数（否则新增的 import 全被误判成无法解析）。
+
+### 验证
+
+`tools/verify_static.py` 通过（13 项开关 key / 分区表 / 详情 / 资源 / 括号平衡全部对齐）。
+`:app:assembleRelease` 编译通过，产物 `versionCode=34` / `versionName=1.11.0`（minSdk 26 / target 34）。
+首次同步需下载 Compose 编译器 2.4.20 与 miuix / navigation3 依赖。
+
+## 1.10.3 (versionCode 33) —— 三工程统一设计规范 v2（纯样式层）
+
+### 改了什么
+
+与多看调谐器 1.26、番茄 HookFanqie 7.2.31 共用同一套设计令牌。页面结构、Preference 树、
+开关键、跨进程写端全部未改，只动样式层。
+
+| 类别 | 之前（1.10.2） | 现在（1.10.3） |
+|---|---|---|
+| 设计令牌 | 数值散落在 style / layout / Kotlin 常量里 | 新增 `res/values/design_tokens.xml`（`ds_*` 间距 / 尺寸 / 圆角 / 胶囊 / 字号 / 行距 / 动效时长 / 阴影），三工程同名同值 |
+| 大屏 | 固定 16dp 页边距 | `values-sw600dp` 96dp、`values-sw720dp` 160dp，正文最大宽度 640dp |
+| 行距 | 只给 fontSize，靠字体默认行高 | 正文 19sp、标签 17sp、脚注 16sp、等宽 18sp（与另两工程一致） |
+| 色 | 缺 `field` / `outline` / `arrow` / `danger` / 主色上的涟漪色 | 补 `mx_field` `mx_outline` `mx_arrow` `mx_danger` `mx_ripple_on_accent`，明暗各一套 |
+| 图标 | 16dp 视口、2.2 描边箭头；功能页 Tab 是实心 | 24dp 视口、1.9 描边、圆头圆角（`ic_mx_arrow` / `ic_mx_tab_features`） |
+| 阴影 | 底栏 10dp | 卡片 0 / 底栏 8dp / 弹窗 16dp（`ds_elevation_*`） |
+| 组件样式 | 每个 layout 各写各的属性 | `themes.xml` 里集中成 `MxText*` `MxCard*` `MxRow*` `MxSectionHeader` `MxCapsuleTag*` `MxNavIndicator` `MxDetail*` `MxInfo*`，全部引用 `@dimen/ds_*` |
+
+### 实现要点
+
+- 新增 `res/values/design_tokens.xml` + `values-sw600dp/` + `values-sw720dp/`；
+  颜色仍沿用本工程的 `mx_*` 前缀（只补缺，不重命名），色值表见规范文档。
+- `ui/CardRowDecoration.kt` 的圆角 / 行距 / 分区落差改从资源读；`ui/PrefsFragment.kt`
+  的底栏高度、胶囊动效时长与圆角不再写 Kotlin 常量。
+- 布局里的裸数值全部换成 `@dimen/ds_*`（`dlg_feature_detail.xml` 里重复的
+  `layout_width` 一并清掉，之前是 mergeDebugResources 直接报错）。
+- 单一真源：`三工程统一设计规范 v2.md`（本地设计规范库）；对账脚本
+  `sync_check.py`（三边 154 项令牌/色值一致性，exit 0 = 通过）。
+
+### 验证
+
+`./gradlew :app:assembleDebug` 与 `:app:assembleRelease` 均通过；观感验证步骤见规范文档末节。
+
 ## 1.10.2 (versionCode 32) —— 设置页改「一条一卡」，关于页 hero 改版
 
 ### 改了什么

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 更宽的大屏 / 横屏（≥720dp 宽）：继续加大留白，内容仍收在 ~640dp 内居中。 -->
+<resources>
+    <dimen name="ds_page_pad_h">160dp</dimen>
+</resources>

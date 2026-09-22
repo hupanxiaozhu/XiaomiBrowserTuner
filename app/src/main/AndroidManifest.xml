@@ -13,8 +13,10 @@
         android:theme="@style/Theme.HookBrowser"
         android:usesCleartextTraffic="true">
 
+        <!-- 模块设置入口（1.11.0 起为 Compose 界面：三 Tab + 二级页）。
+             规则管理页仍是 View 实现，由「规则」Tab 里的入口行启动。 -->
         <activity
-            android:name=".ui.SettingsActivity"
+            android:name=".ui.MainActivity"
             android:exported="true"
             android:label="@string/app_name">
             <intent-filter>

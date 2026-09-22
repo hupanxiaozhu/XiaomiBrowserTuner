@@ -25,4 +25,16 @@
     <color name="mx_ripple">#1F000000</color>
     <!-- hero 卡里实心主色胶囊上的文字色（与 material 的 colorOnPrimary 同值） -->
     <color name="mx_on_accent">#FFFFFF</color>
+
+    <!-- ===== v2 补齐：与多看 @color/miuix_* 逐值对齐的其余语义色 ===== -->
+    <!-- 输入区 / 内容块底（详情弹窗的「注意事项」也用它，此前误用 mx_accent_soft） -->
+    <color name="mx_field">#F2F2F7</color>
+    <!-- 轮廓（开关未选中滑块等） -->
+    <color name="mx_outline">#CCCCCC</color>
+    <!-- 列表右箭头 -->
+    <color name="mx_arrow">#C4C4C6</color>
+    <!-- 危险操作 -->
+    <color name="mx_danger">#FF3B30</color>
+    <!-- 主色按钮上的按压反馈 -->
+    <color name="mx_ripple_on_accent">#33FFFFFF</color>
 </resources>

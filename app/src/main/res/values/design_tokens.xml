@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ===================== 三工程统一设计令牌 v2 · 小米浏览器副本 =====================
+  单一真源：三工程统一设计规范 v2.md（本地设计规范库）
+  等价副本：DuokanTuner/app/src/main/res/values/design_tokens.xml（多看，值必须逐项相同）
+           lsp/HookFanqie/.../ui/DesignTokens.kt（番茄 Kotlin 侧，行尾注释标注同名令牌）
+
+  改任何一个值 = 三边一起改 + 跑 sync_check.py + 三边版本号各 +1。
+  颜色沿用 @color/mx_*（见 values/colors.xml 与 values-night/colors.xml）。
+
+  这里的每一项都被布局 / drawable / Kotlin 直接引用（不再在代码里写死数字）。
+-->
+<resources>
+    <!-- ============ 间距（4dp 网格） ============ -->
+    <dimen name="ds_space_xs">4dp</dimen>
+    <dimen name="ds_space_sm">8dp</dimen>
+    <dimen name="ds_space_md">12dp</dimen>
+    <dimen name="ds_space_lg">16dp</dimen>
+    <dimen name="ds_space_xl">20dp</dimen>
+    <dimen name="ds_space_xxl">24dp</dimen>
+
+    <dimen name="ds_page_pad_h">16dp</dimen>
+    <dimen name="ds_card_pad_h">18dp</dimen>
+    <dimen name="ds_card_pad_v">16dp</dimen>
+    <dimen name="ds_card_gap">10dp</dimen>
+    <dimen name="ds_header_pad_h">22dp</dimen>
+    <dimen name="ds_header_pad_top">20dp</dimen>
+    <dimen name="ds_header_pad_bottom">14dp</dimen>
+    <dimen name="ds_section_pad_start">8dp</dimen>
+    <dimen name="ds_section_pad_top">22dp</dimen>
+    <dimen name="ds_section_pad_bottom">2dp</dimen>
+    <dimen name="ds_block_pad">12dp</dimen>
+    <dimen name="ds_dialog_pad_h">22dp</dimen>
+    <dimen name="ds_hero_pad_h">20dp</dimen>
+    <dimen name="ds_hero_pad_v">22dp</dimen>
+    <dimen name="ds_hero_icon_size">52dp</dimen>
+    <dimen name="ds_header_sub_gap">6dp</dimen>
+
+    <!-- ============ 尺寸 ============ -->
+    <dimen name="ds_row_min_height">60dp</dimen>
+    <dimen name="ds_button_height">48dp</dimen>
+    <dimen name="ds_nav_height">56dp</dimen>
+    <dimen name="ds_top_bar_height">56dp</dimen>
+    <dimen name="ds_divider_height">1dp</dimen>
+    <dimen name="ds_icon_nav">22dp</dimen>
+    <dimen name="ds_icon_chevron">18dp</dimen>
+    <dimen name="ds_content_max_width">640dp</dimen>
+
+    <!-- ============ 圆角 ============ -->
+    <dimen name="ds_radius_card">20dp</dimen>
+    <dimen name="ds_radius_block">12dp</dimen>
+    <dimen name="ds_radius_capsule_tag">11dp</dimen>
+    <dimen name="ds_radius_capsule_chip">16dp</dimen>
+
+    <!-- ============ 胶囊 ============ -->
+    <dimen name="ds_capsule_tag_h">22dp</dimen>
+    <dimen name="ds_capsule_chip_h">32dp</dimen>
+    <dimen name="ds_capsule_tag_pad_h">10dp</dimen>
+    <dimen name="ds_capsule_chip_pad_h">16dp</dimen>
+    <dimen name="ds_nav_pill_pad_h">12dp</dimen>
+    <dimen name="ds_nav_pill_pad_v">6dp</dimen>
+    <dimen name="ds_nav_label_gap">3dp</dimen>
+
+    <!-- ============ 字号层级（sp） ============ -->
+    <dimen name="ds_text_display">30sp</dimen>
+    <dimen name="ds_text_hero">22sp</dimen>
+    <dimen name="ds_text_dialog_title">17sp</dimen>
+    <dimen name="ds_text_title">16sp</dimen>
+    <dimen name="ds_text_value">15sp</dimen>
+    <dimen name="ds_text_section">14sp</dimen>
+    <dimen name="ds_text_body">13sp</dimen>
+    <dimen name="ds_text_label">12sp</dimen>
+    <dimen name="ds_text_caption">11sp</dimen>
+
+    <!-- 行距补偿（lineSpacingExtra = 行高 − 字号） -->
+    <dimen name="ds_line_body">6dp</dimen>
+    <dimen name="ds_line_label">5dp</dimen>
+    <dimen name="ds_line_caption">5dp</dimen>
+    <dimen name="ds_line_mono">6dp</dimen>
+
+    <!-- ============ 动效（ms） ============ -->
+    <integer name="ds_dur_state">220</integer>
+    <integer name="ds_dur_nav">260</integer>
+    <integer name="ds_dur_page">200</integer>
+    <integer name="ds_dur_press">120</integer>
+
+    <!-- ============ 阴影 ============ -->
+    <dimen name="ds_elevation_card">0dp</dimen>
+    <dimen name="ds_elevation_nav">8dp</dimen>
+    <dimen name="ds_elevation_dialog">16dp</dimen>
+</resources>

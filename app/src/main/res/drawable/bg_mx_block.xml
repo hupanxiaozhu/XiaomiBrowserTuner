@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- 内容块底（详情弹窗的「注意事项」那一块）。
-     它不是胶囊：块高由文字撑开，圆角必须是固定值，不能用 stadium 算法。
-     12dp 与多看 Ui.RADIUS_FIELD / 番茄 DetailBody 的注意事项块保持一致。 -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="@color/mx_accent_soft" />
-    <corners android:radius="12dp" />
-</shape>

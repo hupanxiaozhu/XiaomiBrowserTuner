@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * ## 用法
  *
- * - `SettingsActivity.onCreate` 调一次 [bind]（框架要求「只注册一次」，内部已做幂等）。
+ * - `MainActivity.onCreate` 调一次 [bind]（框架要求「只注册一次」，内部已做幂等）。
  * - 本地 SP 每次变更后调 [push] 把整组镜像过去；防抖由调用方负责。
  * - 服务还没连上时 [push] 会把组名记进 [pending]，连上后自动补推。
  */

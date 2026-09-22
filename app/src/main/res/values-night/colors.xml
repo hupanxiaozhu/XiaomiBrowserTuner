@@ -15,4 +15,11 @@
     <color name="mx_ripple">#33FFFFFF</color>
     <!-- 深色下主色仍是 #4C8DFF，白字依然够对比 -->
     <color name="mx_on_accent">#FFFFFF</color>
+
+    <!-- ===== v2 补齐：与多看 values-night/@color/miuix_* 逐值对齐 ===== -->
+    <color name="mx_field">#2C2C2E</color>
+    <color name="mx_outline">#636366</color>
+    <color name="mx_arrow">#6C6C70</color>
+    <color name="mx_danger">#FF453A</color>
+    <color name="mx_ripple_on_accent">#33FFFFFF</color>
 </resources>

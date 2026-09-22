@@ -1,8 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  MIUI X 主题（1.11.0）。
+
+  设置界面已改为 Compose（ui/DesignTokens.kt 是它的令牌真源），这里**只剩一样东西**：
+  `Theme.HookBrowser` —— 应用主题，Compose 的 MainActivity 与 View 实现的
+  RuleManagerActivity 共用同一套（深浅色跟随系统，强调色取 @color/mx_accent）。
+
+  为旧版式写的那一批 style（MxCard / MxCardRow / MxCapsuleTag* / MxDetail* …）已随
+  PreferenceFragmentCompat 一起删除：它们在 Compose 里的等价物是 ui/FeatureCatalog.kt
+  的 ToggleCard / StatusPill / DetailBody 等组件，不再需要 XML 样式。
+
+  颜色一律引 @color/mx_*，尺寸引 @dimen/ds_*（res/values/design_tokens.xml，
+  与多看同名文件逐值相同）—— 改样式改令牌一处，三工程跟着变。
+-->
 <resources>
     <!-- MIUI X：浅灰页面底 + 大圆角白卡片 + 蓝调强调色。
-         colorControlActivated 决定开关打开时的滑轨颜色（androidx 的开关用主题色染色，
-         我们不自绘 switch —— 自绘会与 SwitchPreferenceCompat 自己 inflate 的 widget 打架）。 -->
+         colorControlActivated 决定规则管理页里 Material 组件的强调色
+         （对话框按钮、开关滑轨都按主题色染色，这里不自绘）。 -->
     <style name="Theme.HookBrowser" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/mx_accent</item>
         <item name="colorOnPrimary">#FFFFFF</item>
@@ -13,56 +27,5 @@
         <item name="android:navigationBarColor">@color/mx_bg</item>
         <!-- windowLightStatusBar 不在这里写：Material3.DayNight 自己按日夜模式给值，
              无条件写死 true 会让深色模式下的状态栏图标白底白字看不见 -->
-    </style>
-
-    <!-- 底部导航选中项的胶囊指示器。
-         M3 的 ActiveIndicator 默认就是「stadium 形状 + 64×32dp」（shapeAppearance 为
-         ShapeAppearance.Material3.Corner.Full），32dp 高 → 圆角 16dp，与多看自绘底栏胶囊、
-         番茄 CapsuleNavBar 的圆角规则一致；这里只把底色换成我们自己的令牌。
-         改尺寸/形状前先对照 docs/胶囊特效统一规范.md，别把三边其中一个改歪。 -->
-    <style name="MxNavIndicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
-        <item name="android:color">@color/mx_accent_soft</item>
-    </style>
-
-    <!-- 功能详情弹窗里的段落小标题与正文 -->
-    <style name="MxDetailLabel">
-        <item name="android:layout_marginTop">16dp</item>
-        <item name="android:textColor">@color/mx_text_secondary</item>
-        <item name="android:textSize">11sp</item>
-        <item name="android:textStyle">bold</item>
-    </style>
-
-    <style name="MxDetailBody">
-        <item name="android:layout_marginTop">4dp</item>
-        <item name="android:lineSpacingExtra">4dp</item>
-        <item name="android:textColor">@color/mx_text_primary</item>
-        <item name="android:textSize">13sp</item>
-    </style>
-
-    <!-- 关于页的分区标题（「项目信息 / 更新日志」）：
-         番茄 HookFanqie 的 SectionHeader 等价物 —— 14sp、次要色、比卡片正文更靠左一点。
-         左边的 8dp 是相对父容器的（父容器已有 16dp 留白），不是绝对位置。 -->
-    <style name="MxSectionHeader">
-        <item name="android:paddingStart">8dp</item>
-        <item name="android:paddingTop">22dp</item>
-        <item name="android:paddingEnd">16dp</item>
-        <item name="android:paddingBottom">2dp</item>
-        <item name="android:textColor">@color/mx_text_secondary</item>
-        <item name="android:textSize">14sp</item>
-    </style>
-
-    <!-- 关于页信息卡的标签与取值：番茄 InfoCard 的等价物
-         （标签 12sp 次要色在上，取值 15sp 粗体在下） -->
-    <style name="MxInfoLabel">
-        <item name="android:textColor">@color/mx_text_secondary</item>
-        <item name="android:textSize">12sp</item>
-    </style>
-
-    <style name="MxInfoValue">
-        <item name="android:layout_marginTop">3dp</item>
-        <item name="android:lineSpacingExtra">3dp</item>
-        <item name="android:textColor">@color/mx_text_primary</item>
-        <item name="android:textSize">15sp</item>
-        <item name="android:textStyle">bold</item>
     </style>
 </resources>

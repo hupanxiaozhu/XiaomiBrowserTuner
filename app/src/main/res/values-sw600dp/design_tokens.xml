@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 平板 / 大屏（≥600dp 宽）：只覆盖页面左右留白，让内容收窄到 ~640dp 居中。
+     与多看的 values-sw600dp/design_tokens.xml、番茄的 widthIn(max = 640.dp) 同一效果。 -->
+<resources>
+    <dimen name="ds_page_pad_h">96dp</dimen>
+</resources>
