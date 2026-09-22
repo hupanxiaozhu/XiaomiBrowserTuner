@@ -12,10 +12,41 @@ import androidx.compose.ui.unit.sp
  * 等价副本（**值必须逐项相同**）：
  * - 番茄 `lsp/HookFanqie/app/src/main/java/cc/hookfanqie/compat/ui/DesignTokens.kt`
  * - 多看 `DuokanTuner/app/src/main/res/values/design_tokens.xml`
- * - 浏览器（本工程，XML 时代的副本已随 1.11.0 的界面重建删除，现以本文件为准）
+ * - 浏览器（本工程）**两侧都有**：本文件是 Compose 侧的真源；`res/values/design_tokens.xml`
+ *   是 XML 侧的副本 —— 1.12.0 起本工程已经没有 View 布局消费它了，**留着是为了三工程
+ *   对账**（sync_check.py 按名单比对三边）。不要因为「没人引用」把它删掉。
  *
  * 行尾的 `// ds_xxx = 值` 注释是给 `sync_check.py` 用的对账锚点，
  * 不要改格式；改值 = 三边一起改 + 跑脚本 + 三边版本号各 +1。
+ *
+ * ---------------------------------------------------------------------------
+ * 本工程实际用到哪一些（2026-09-23 盘点）
+ * ---------------------------------------------------------------------------
+ *
+ * 这份表是**三边契约的完整副本**，所以必然有一部分在本工程里没有消费者。
+ * 看代码时按下两组区分，别把「文件里有」当成「界面上在用」。
+ *
+ * **在用**：DsColor 的 bg / card / field / textPrimary / textSecondary / accent /
+ * accentSoft / onAccent / divider / trackOff / outline / scrim；DsType 的 hero /
+ * dialogTitle / title / value / section / body / label / caption 与 lineBody /
+ * lineLabel / lineMono；DsSpace 的 xs / sm / md / lg / xl / pagePadH / cardPadH /
+ * cardPadV / cardGap / sectionPadBottom / dividerHeight / dialogPadH / heroPadH /
+ * heroPadV / heroIconSize / buttonHeight / iconChevron / contentMaxWidth；
+ * DsRadius 的 card / block；DsCapsule 的 tagHeight / tagPadH；DsMotion.state；
+ * DsElevation.dialog。
+ *
+ * **未用**（契约要求逐值相同，所以保留，别删）：
+ *   - `DsColor` 的 textHint / ripple / rippleOnAccent / arrow / danger —— 前三组是
+ *     View 时代的水波纹与提示色，自绘组件现在直接吃 miuix 的默认反馈；
+ *     danger 留给「危险操作」文案，当前界面里没有这种文案（禁用项走次要色）。
+ *   - `DsType.display`（30sp 页头大标题）—— 页头现在由 miuix `TopAppBar` 自己排版。
+ *   - `DsType.lineCaption`、`DsSpace` 的 headerPad* / headerSubGap / sectionPadStart /
+ *     sectionPadTop / blockPad / rowMinHeight / xxl / topBarHeight / navHeight / iconNav
+ *     —— 都是旧版式的页头与自绘底栏尺寸，其中 navHeight / navPillPad* / navLabelGap
+ *     这组是给「自己画底栏」准备的，而当前底栏用的是 miuix `NavigationBar`（自带尺寸）。
+ *   - `DsRadius.capsuleTag` / `capsuleChip` 与 `DsCapsule` 的 chip* —— 胶囊统一走
+ *     stadium（`CAPSULE_TAG_SHAPE`，圆角 = 高度一半），不需要固定圆角值。
+ *   - `DsMotion` 的 nav / page / press、`DsElevation` 的 card / nav —— 转场交给 miuix。
  */
 
 /**

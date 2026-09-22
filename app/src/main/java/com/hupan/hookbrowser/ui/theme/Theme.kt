@@ -67,3 +67,14 @@ internal fun BrowserTheme(content: @Composable () -> Unit) {
 @Composable
 internal fun accentSoft(): Color =
     if (isSystemInDarkTheme()) DsColor.accentSoftDark else DsColor.accentSoftLight
+
+/**
+ * 强调色**实心底**上的文字 / 图标色（恒为白）。
+ *
+ * <p>用它而不是直接写 `Color.White`：三边约定「accent 上的前景色」是独立令牌
+ * （`ds_color_on_accent`），哪天某个工程把它调成暖白或淡灰，界面上所有压在
+ * 主色底上的元素只有这一处要跟着改。
+ */
+@Composable
+internal fun onAccent(): Color =
+    if (isSystemInDarkTheme()) DsColor.onAccentDark else DsColor.onAccentLight

@@ -8,7 +8,10 @@
   改任何一个值 = 三边一起改 + 跑 sync_check.py + 三边版本号各 +1。
   颜色沿用 @color/mx_*（见 values/colors.xml 与 values-night/colors.xml）。
 
-  这里的每一项都被布局 / drawable / Kotlin 直接引用（不再在代码里写死数字）。
+  ⚠ 1.12.0 起本工程已经**没有任何 View 布局**（规则管理页那最后一批 XML 已删），
+  所以这份 XML 副本没有界面的直接消费者 —— 它留着是为了三工程对账（sync_check.py
+  按名单比对三边）。Compose 侧的真源是 ui/DesignTokens.kt，两侧值必须逐项相同；
+  别因为「没人引用」把它删掉。
 -->
 <resources>
     <!-- ============ 间距（4dp 网格） ============ -->

@@ -32,7 +32,7 @@
 
 - 包名：`com.hupan.hookbrowser`
 - 作用域：`com.android.browser`
-- 当前版本：**1.10.2**（versionCode 32）
+- 当前版本：**1.12.0**（versionCode 35）
 
 ---
 
@@ -227,7 +227,9 @@ hook 目标是对着宿主 **20.27.1010901** 逐个核对过的。小米浏览�
 
 | 版本 | 主题 |
 |---|---|
-| **1.10.2** | 设置页改「一条一卡」大卡片 + 关于页 hero 改版 |
+| **1.12.0** | 规则管理页搬进 Compose（界面 100% 无 View 页）+ 功能目录拆分文件 + 主线程 IO / 浮层叠加两个修复 |
+| 1.11.0 | 设置界面重建为「三 Tab + 二级页」（Compose + miuix + navigation3） |
+| 1.10.2 | 设置页改「一条一卡」大卡片 + 关于页 hero 改版 |
 | 1.10.1 | 补上写入端：开关真的能同步到宿主了 |
 | 1.10.0 | 迁移到 libxposed API 102 |
 | 1.9.8 | 移除 LSPosed 废弃项：XSharedPreferences |
@@ -341,10 +343,12 @@ XiaomiBrowserTuner/
 │     │                                 ├ page/        MainPage（三 Tab）+ 功能 / 规则 / 关于
 │     │                                 │              + SettingsPage / ProjectInfoPage
 │     │                                 │              / ChangelogPage / DiagnosticsPage
+│     │                                 │              + rules/ 规则 Tab 与规则管理页
 │     │                                 ├ component/   DetailDialog / OptionDialog / ConfirmDialog
 │     │                                 ├ theme/ + utils/ + DesignTokens.kt（设计令牌）
-│     │                                 ├ FeatureCatalog.kt  开关目录（详情/分组/更新日志/项目信息）
-│     │                                 ├ SettingsPrefs.kt   本地 SP 读写 + 推框架
+│     │                                 ├ FeatureCatalog.kt      开关目录数据（详情/分组/日志/项目信息）
+│     │                                 ├ CatalogComponents.kt   目录驱动的展示组件（1.12.0 拆出）
+│     │                                 ├ SettingsPrefs.kt       本地 SP 读写 + 推框架
 │     │                                 └ RuleManagerActivity + RuleSetAdapter（规则管理，仍是 View）
 │     ├─ res/values/design_tokens.xml    View 侧设计令牌（规则管理页用；Compose 侧读 DesignTokens.kt）
 │     └─ res/values{,-night}/colors.xml   MIUI X 设计令牌（浅色 / 深色）
@@ -447,14 +451,16 @@ UA 有 3 种可选模式：Chrome 移动版（真机信息，默认）／多 App
 - **信息架构**：一级页只放开关 + 入口。完整信息表在「项目信息」页、全部历史日志在
   「更新日志」页（默认逐条收起）、框架服务状态与「复制当前状态」在「诊断」页、
   「恢复默认开关」在「应用设置」页 —— 设置入口放关于页，功能页顶栏只留标题。
-- **交互不变：点开关 = 切换，点卡片其它地方 = 看详情**。自绘 `Row` 而不用库的
-  `SwitchPreference`：它整行的 `onClick` 就是切换，两条路径分不开。
+- **交互不变：点开关 = 切换，点卡片其它地方 = 看详情**。Compose 下这两条路径天然分开：
+  `Switch` 内部是 `toggleable`，会消费点击事件，不会冒泡到外层的 `clickable`。
+  （XML 时代用 androidx.preference 做不到 —— 它整行的 `onClick` 就是切换，1.9.4 起那套就是自绘的。）
 - **三个浮层都是自绘 Box 叠层**（详情 / 单选 / 风险确认）：
   miuix 的 `WindowDialog` 内容区走 navigationevent 的预测性返回，要求宿主提供
   `NavigationEventDispatcherOwner`，**模块自己的 Activity 没有，一点就崩** ——
   自绘不新建窗口、不碰 navigationevent，彻底没有这条崩溃路径。
   详情浮层里点「关闭本项 / 开启本项」**不关窗**（可连着点几下看效果）。
-- **开关状态单点持有**：`ToggleState`（`SnapshotStateMap` + `SettingsPrefs`）。
+- **开关状态单点持有**：`ToggleState`（`SnapshotStateMap` + `SettingsPrefs`），装载在
+  `MainActivity.onCreate` 一次完成 —— 不在组合期读 SharedPreferences。
   关在页面 `remember` 里的话，从「应用设置」页重置后返回主界面列表不会刷新。
   两个下拉（UA 模式 / 搜索引擎）是字符串开关，与布尔分开存。
 - **写端不变**：本地 SP 是唯一真源，每次写入后经 `ModuleService` 把整组
@@ -465,6 +471,23 @@ UA 有 3 种可选模式：Chrome 移动版（真机信息，默认）／多 App
   编译、依赖 compose foundation 1.11.1，内置版本读不了。只能**向上覆盖**：
   根 `build.gradle.kts` 的 `buildscript` 里放 `kotlin-gradle-plugin:2.4.20`，
   Compose 编译器插件版本与它相等（2.4.20）。⛔ `miuix-blur` 不能加（minSdk 33 vs 26）。
+
+### 1.12.0：界面收口成 100% Compose
+
+- **规则管理页搬进 Compose**：原 `RuleManagerActivity`（317 行 View + `activity_rule_manager.xml`
+  + `item_rule_set.xml` + `RuleSetAdapter`）整体删除，改为 `Route.RuleManager` 二级页
+  （`ui/page/rules/RuleManagerPage.kt`）—— 导入 / 查看 / 删除三个弹框全部自绘。
+  至此**工程里再无 View 界面**，`res/layout/` 为空，`strings.xml` 只剩 manifest 用的两条。
+- **规则库概况不再靠 `ActivityResult`**：管理页变成同进程页面后那条回调没了，改用
+  `ui/page/rules/RuleLibraryState.kt` 的修订号 + `produceState`；统计要全量解析启用中的规则，
+  因此走 `Dispatchers.IO`（原实现是在组合期直接在主线程算的）。
+- **功能目录拆成两份**：`ui/FeatureCatalog.kt` 只留数据（`tools/verify_static.py` 按路径读它，
+  不能搬走），展示组件搬到同包的 `ui/CatalogComponents.kt` —— 拆文件不拆包，调用点的 import 不变。
+- **两个修复**：详情浮层里点亮风险开关时两层遮罩叠成 75% 黑 → 改为先收起详情；
+  「更新日志」列表补 `key`（原来按位置记折叠态，版本一多会把展开态错配到别的版本上）。
+- **一处待接回**：1.10.3 做过的「宽屏左右留白加大、内容收窄居中」在 1.11.0 重写时丢了，
+  `ui/utils/Page.kt` 的 `rememberIsWideScreen()` 与 `DsSpace.contentMaxWidth` 是接入点，
+  目前**没有页面调用**（注释里已标明，别再当成死代码删掉）。
 
 #### 这套 UI 已固化为跨栈规范
 

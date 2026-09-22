@@ -34,4 +34,8 @@ sealed interface Route : NavKey {
     /** 诊断页：框架服务连接状态、开关如何同步、一键复制当前状态。 */
     @Serializable
     data object Diagnostics : Route
+
+    /** 规则管理页：导入 / 启停 / 删除自定义拦截规则集。入口在「规则」Tab。 */
+    @Serializable
+    data object RuleManager : Route
 }

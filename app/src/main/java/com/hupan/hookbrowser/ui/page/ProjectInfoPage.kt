@@ -8,7 +8,6 @@ package com.hupan.hookbrowser.ui.page
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -62,7 +61,7 @@ internal fun ProjectInfoPage() {
             LazyColumn(
                 state = listState,
                 modifier = Modifier.pageScroll(scrollBehavior),
-                contentPadding = pageContentPadding(innerPadding, PaddingValues(0.dp)),
+                contentPadding = pageContentPadding(innerPadding),
                 verticalArrangement = Arrangement.spacedBy(DsSpace.cardGap),
             ) {
                 item { ProjectInfoCard(version) }

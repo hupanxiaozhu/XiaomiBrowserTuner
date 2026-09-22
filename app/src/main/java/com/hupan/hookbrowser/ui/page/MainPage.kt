@@ -65,12 +65,11 @@ internal fun MainPage() {
     val navigator = LocalNavigator.current
     val scope = rememberCoroutineScope()
 
-    // 开关状态：装载一次，之后由 ToggleState 统一持有（设置页重置后本页自动跟着变）
-    val values = remember(context) {
-        ToggleState.ensure(context)
-        ToggleState.values
-    }
-    val strings = remember(context) { ToggleState.strings }
+    // 开关状态由 ToggleState 统一持有（设置页重置后本页自动跟着变）。
+    // 这里拿到的就是那个 state map 本身 —— 读它的元素即参与组合，值一变相关页面自动重组；
+    // 装载（读 SharedPreferences）已提到 MainActivity.onCreate，不在组合期做。
+    val values = ToggleState.values
+    val strings = ToggleState.strings
 
     /**
      * 改开关：命中风险开关且是「打开」时先弹确认，用户点头才落盘。
@@ -107,11 +106,14 @@ internal fun MainPage() {
     val tabs = MainTab.entries
     val pagerState = rememberPagerState(pageCount = { tabs.size })
     val currentPage = pagerState.currentPage
+    // 返回键的判定用 settledPage（滑动停下后的页）而不是 currentPage（滑动途中就在变）：
+    // 后者会在动画中途把返回键的落点甩到别的 Tab 上
+    val settledPage = pagerState.settledPage
     val goToTab: (Int) -> Unit = { index ->
         if (index != currentPage) scope.launch { pagerState.animateScrollToPage(index) }
     }
 
-    BackHandler(enabled = currentPage != 0) { goToTab(0) }
+    BackHandler(enabled = settledPage != 0) { goToTab(0) }
 
     Scaffold(
         bottomBar = {
@@ -170,7 +172,12 @@ internal fun MainPage() {
                 target = detailTarget,
                 isOn = { key -> values[key] ?: false },
                 onDismiss = { detailShown = false },
-                onToggle = { key, value -> update(key, value) },
+                onToggle = { key, value ->
+                    // 风险开关在详情里被点亮时会转成确认浮层，而确认浮层自己还有一层 scrim ——
+                    // 两层叠起来是 75% 黑，详情卡还会露在确认框下面。先收起详情再走同一条路径。
+                    if (value && RISKY_CONFIRMS.containsKey(key)) detailShown = false
+                    update(key, value)
+                },
             )
 
             val option = optionTarget

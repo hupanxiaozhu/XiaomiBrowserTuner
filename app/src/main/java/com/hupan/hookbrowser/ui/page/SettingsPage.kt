@@ -12,7 +12,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -33,9 +32,6 @@ import androidx.compose.ui.unit.dp
 import com.hupan.hookbrowser.ui.DsRadius
 import com.hupan.hookbrowser.ui.DsSpace
 import com.hupan.hookbrowser.ui.DsType
-import com.hupan.hookbrowser.ui.EntryGroup
-import com.hupan.hookbrowser.ui.InfoItem
-import com.hupan.hookbrowser.ui.InfoRow
 import com.hupan.hookbrowser.ui.moduleVersion
 import com.hupan.hookbrowser.ui.navigation.LocalNavigator
 import com.hupan.hookbrowser.ui.utils.pageContentPadding
@@ -87,7 +83,7 @@ internal fun SettingsPage() {
             LazyColumn(
                 state = listState,
                 modifier = Modifier.pageScroll(scrollBehavior),
-                contentPadding = pageContentPadding(innerPadding, PaddingValues(0.dp)),
+                contentPadding = pageContentPadding(innerPadding),
                 verticalArrangement = Arrangement.spacedBy(DsSpace.cardGap),
             ) {
                 item {
@@ -141,25 +137,20 @@ internal fun SettingsPage() {
                 // 版本信息在这里只留一行「当前版本」：完整信息表在「项目信息」页，
                 // 两处重复只会让两边都得维护。
                 item {
-                    EntryGroup {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(
-                                    horizontal = DsSpace.cardPadH,
-                                    vertical = DsSpace.cardPadV,
-                                ),
-                        ) {
-                            InfoRow(
-                                item = InfoItem(
-                                    label = "当前版本",
-                                    value = version,
-                                    detail = "深浅色与主题跟随系统，模块不自带主题切换 —— " +
-                                        "与多看、番茄两边一致",
-                                ),
-                                version = version,
-                            )
-                        }
+                    SettingCard(title = "当前版本") {
+                        Text(
+                            text = version,
+                            fontSize = DsType.value,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(top = DsSpace.sm),
+                        )
+                        Text(
+                            text = "深浅色与主题跟随系统，模块不自带主题切换 —— 与多看、番茄两边一致。",
+                            fontSize = DsType.body,
+                            lineHeight = DsType.lineBody,
+                            color = MiuixTheme.colorScheme.onBackgroundVariant,
+                            modifier = Modifier.padding(top = DsSpace.xs),
+                        )
                     }
                 }
             }

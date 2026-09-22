@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.12.0 (versionCode 35) —— 规则管理页搬进 Compose，界面 100% 无 View
+
+### 改了什么
+
+**功能、开关键、hook 逻辑、规则引擎、解析护栏一行未动**，只动界面层与文档。
+
+| 类别 | 之前（1.11.0） | 现在（1.12.0） |
+|---|---|---|
+| 规则管理页 | `RuleManagerActivity`：View + XML 布局 + `MaterialAlertDialogBuilder`，与其余页面两套观感 | `Route.RuleManager` 二级页：Compose + 同一套令牌与组件，导入 / 查看 / 删除三个弹框全部自绘 |
+| 规则库概况刷新 | 靠 `ActivityResult` 回调（管理页是独立 Activity） | 同进程修订号 `RuleLibraryState.revision` + `produceState` |
+| 规则库统计 | 组合期在主线程读 SP 并全量解析启用中的规则 | `Dispatchers.IO` |
+| `ui/FeatureCatalog.kt` | 1204 行：目录数据 + 全部展示组件混在一起 | 529 行只管数据；组件拆到同包的 `ui/CatalogComponents.kt`（拆文件不拆包，调用点 import 不变） |
+| 残留 XML | `res/layout/` 两个布局 + `strings.xml` 里 25 条界面文案 | 全部删除（`strings.xml` 只剩 manifest 用的两条，`res/layout/` 为空） |
+
+### 修复
+
+- **浮层叠加**：在功能详情浮层里点亮风险开关（安全检测 / 解锁隐藏项）时，确认浮层会压在详情卡之上，
+  两层 `scrim`（各 50% 黑）叠成 75% 黑。现在先收起详情再弹确认。
+- **列表状态错配**：「更新日志」二级页的列表没给 `key`，折叠态却记在条目内部 ——
+  版本一多、条目被回收复用时，会把某个版本的展开态搬到另一个版本上。
+- **主线程磁盘 IO**：规则库统计改为协程 + IO 线程（见上表）。
+- **返回键落点**：主界面返回键的判定从 `currentPage` 改为 `settledPage`，滑动动画途中不再乱跳 Tab。
+
+### 说明
+
+- `rememberIsWideScreen()` 保留未删：1.10.3 做过的宽屏留白在 1.11.0 的 Compose 重写里丢了，
+  这个函数与 `DsSpace.contentMaxWidth` 是接回它的零件，注释已标明「当前无调用」。
+- `res/values/design_tokens.xml` 保留：本工程已无 View 布局消费它，留着是为了三工程对账
+  （`sync_check.py` 按名单比对三边），Compose 侧真源仍是 `ui/DesignTokens.kt`。
+- 令牌新增一处实质使用：强调色底上的前景色从硬编码 `Color.White` 改为 `onAccent()` 令牌；
+  `DesignTokens.kt` 补了一份「本工程实际在用 / 未用」清单。
+
 ## 1.11.0 (versionCode 34) —— 设置界面重建为「三 Tab + 二级页」（Compose + miuix）
 
 ### 改了什么

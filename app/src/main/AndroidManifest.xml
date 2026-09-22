@@ -13,8 +13,8 @@
         android:theme="@style/Theme.HookBrowser"
         android:usesCleartextTraffic="true">
 
-        <!-- 模块设置入口（1.11.0 起为 Compose 界面：三 Tab + 二级页）。
-             规则管理页仍是 View 实现，由「规则」Tab 里的入口行启动。 -->
+        <!-- 模块设置入口。1.11.0 起界面是 Compose（三 Tab + 二级页）；
+             1.12.0 起规则管理也并进同一个 Activity（原来的 RuleManagerActivity 已删除）。 -->
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
@@ -24,12 +24,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- 自定义拦截规则的管理页（导入 / 启停 / 删除），只由模块自己的设置页进入 -->
-        <activity
-            android:name=".ui.RuleManagerActivity"
-            android:exported="false"
-            android:label="@string/rule_mgr_title" />
 
         <!--
             框架服务入口（1.10.1 新增，必需）。

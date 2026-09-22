@@ -9,10 +9,10 @@ package com.hupan.hookbrowser.ui.page
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -59,12 +59,14 @@ internal fun ChangelogPage() {
             LazyColumn(
                 state = listState,
                 modifier = Modifier.pageScroll(scrollBehavior),
-                contentPadding = pageContentPadding(innerPadding, PaddingValues(0.dp)),
+                contentPadding = pageContentPadding(innerPadding),
                 verticalArrangement = Arrangement.spacedBy(DsSpace.cardGap),
             ) {
-                items(count = CHANGELOGS.size) { index ->
+                // 必须给 key：折叠状态记在条目内部（ChangelogCard 里的 remember），
+                // 列表回收复用时不带 key 会把某个版本的展开态搬到另一个版本上
+                itemsIndexed(items = CHANGELOGS, key = { _, entry -> entry.version }) { index, entry ->
                     ChangelogCard(
-                        entry = CHANGELOGS[index],
+                        entry = entry,
                         current = index == 0,
                         collapsible = index > 0,
                     )

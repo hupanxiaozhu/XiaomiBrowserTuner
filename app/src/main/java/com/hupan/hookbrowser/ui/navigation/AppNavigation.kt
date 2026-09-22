@@ -27,6 +27,7 @@ import com.hupan.hookbrowser.ui.page.DiagnosticsPage
 import com.hupan.hookbrowser.ui.page.MainPage
 import com.hupan.hookbrowser.ui.page.ProjectInfoPage
 import com.hupan.hookbrowser.ui.page.SettingsPage
+import com.hupan.hookbrowser.ui.page.rules.RuleManagerPage
 
 @Composable
 internal fun AppNavigation(startRoute: Route = Route.Main) {
@@ -41,6 +42,7 @@ internal fun AppNavigation(startRoute: Route = Route.Main) {
                 entry<Route.ProjectInfo> { ProjectInfoPage() }
                 entry<Route.Diagnostics> { DiagnosticsPage() }
                 entry<Route.Changelog> { ChangelogPage() }
+                entry<Route.RuleManager> { RuleManagerPage() }
             }
         }
         val entries = rememberDecoratedNavEntries(
