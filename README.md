@@ -32,7 +32,7 @@
 
 - 包名：`com.hupan.hookbrowser`
 - 作用域：`com.android.browser`
-- 当前版本：**1.12.0**（versionCode 35）
+- 当前版本：**1.12.1**（versionCode 36）
 
 ---
 
@@ -227,7 +227,8 @@ hook 目标是对着宿主 **20.27.1010901** 逐个核对过的。小米浏览�
 
 | 版本 | 主题 |
 |---|---|
-| **1.12.0** | 规则管理页搬进 Compose（界面 100% 无 View 页）+ 功能目录拆分文件 + 主线程 IO / 浮层叠加两个修复 |
+| **1.12.1** | 修「点开功能卡片后浮层太靠下」：浮层让开底部导航栏 + 卡片整体限高，正文与按钮不再被挡 |
+| 1.12.0 | 规则管理页搬进 Compose（界面 100% 无 View 页）+ 功能目录拆分文件 + 主线程 IO / 浮层叠加两个修复 |
 | 1.11.0 | 设置界面重建为「三 Tab + 二级页」（Compose + miuix + navigation3） |
 | 1.10.2 | 设置页改「一条一卡」大卡片 + 关于页 hero 改版 |
 | 1.10.1 | 补上写入端：开关真的能同步到宿主了 |
@@ -345,12 +346,12 @@ XiaomiBrowserTuner/
 │     │                                 │              / ChangelogPage / DiagnosticsPage
 │     │                                 │              + rules/ 规则 Tab 与规则管理页
 │     │                                 ├ component/   DetailDialog / OptionDialog / ConfirmDialog
+│     │                                 │              + DialogInsets（贴底浮层的让位与限高，1.12.1）
 │     │                                 ├ theme/ + utils/ + DesignTokens.kt（设计令牌）
 │     │                                 ├ FeatureCatalog.kt      开关目录数据（详情/分组/日志/项目信息）
 │     │                                 ├ CatalogComponents.kt   目录驱动的展示组件（1.12.0 拆出）
-│     │                                 ├ SettingsPrefs.kt       本地 SP 读写 + 推框架
-│     │                                 └ RuleManagerActivity + RuleSetAdapter（规则管理，仍是 View）
-│     ├─ res/values/design_tokens.xml    View 侧设计令牌（规则管理页用；Compose 侧读 DesignTokens.kt）
+│     │                                 └ SettingsPrefs.kt       本地 SP 读写 + 推框架
+│     ├─ res/values/design_tokens.xml    View 侧设计令牌（已无 View 消费者，保留供三工程对账；Compose 侧读 DesignTokens.kt）
 │     └─ res/values{,-night}/colors.xml   MIUI X 设计令牌（浅色 / 深色）
 ├─ tools/verify_static.py                静态走查（无 JDK 也能跑，交付前必过）
 ├─ tools/test_js_filter.js               JS_FILTER 回归测试（node 跑，改注入脚本后必过）
@@ -471,6 +472,18 @@ UA 有 3 种可选模式：Chrome 移动版（真机信息，默认）／多 App
   编译、依赖 compose foundation 1.11.1，内置版本读不了。只能**向上覆盖**：
   根 `build.gradle.kts` 的 `buildscript` 里放 `kotlin-gradle-plugin:2.4.20`，
   Compose 编译器插件版本与它相等（2.4.20）。⛔ `miuix-blur` 不能加（minSdk 33 vs 26）。
+
+### 1.12.1：贴底浮层让开底部导航栏
+
+- **症状**：点开功能卡片后浮层太靠下，正文看不全、关闭按钮点不到。
+- **原因**：三个浮层都铺在主界面 `Scaffold` 的**内容区**里，而底部导航栏是 `Scaffold`
+  后画上去的 —— 卡片底部被底栏盖住。原先只加了 `navigationBarsPadding()`（只避开系统导航条）。
+- **改法**：把底栏高度（`innerPadding.calculateBottomPadding()`）传给浮层，与系统导航条
+  **取大者**（不是相加：miuix 导航条自身已带导航条内边距，相加会多留一层空白）；
+  再用 `BoxWithConstraints` 按屏幕高给卡片限高，中段用 `weight(1f, fill = false)` 跟随剩余空间
+  压缩并内部滚动 —— 标题与按钮始终在屏幕内，屏幕够高时卡片仍收着长。
+- 计算集中在 `ui/component/DialogInsets.kt`（`rememberDialogBottomReserve` / `dialogCardMaxHeight`），
+  五个浮层共用。
 
 ### 1.12.0：界面收口成 100% Compose
 

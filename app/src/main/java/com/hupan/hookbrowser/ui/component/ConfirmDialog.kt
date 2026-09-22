@@ -15,11 +15,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +30,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.hupan.hookbrowser.ui.DsColor
 import com.hupan.hookbrowser.ui.DsElevation
 import com.hupan.hookbrowser.ui.DsRadius
@@ -44,6 +47,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * @param message 正文（说明风险是什么）
  * @param onConfirm 用户点头
  * @param onDismiss 取消 / 点遮罩 / 返回键
+ * @param bottomInset 宿主底栏占的高度（详见 [rememberDialogBottomReserve]）
  */
 @Composable
 internal fun ConfirmDialog(
@@ -53,13 +57,14 @@ internal fun ConfirmDialog(
     confirmText: String = "确认",
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    bottomInset: Dp = 0.dp,
 ) {
     if (!shown) return
 
     BackHandler(enabled = true) { onDismiss() }
 
     val scheme = MiuixTheme.colorScheme
-    Box(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -71,13 +76,21 @@ internal fun ConfirmDialog(
                 ),
         )
 
+        val reserve = rememberDialogBottomReserve(bottomInset)
+        val cardMaxHeight = dialogCardMaxHeight(maxHeight, reserve)
+
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .widthIn(max = DsSpace.contentMaxWidth)
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = DsSpace.pagePadH, vertical = DsSpace.pagePadH)
+                .padding(
+                    start = DsSpace.pagePadH,
+                    end = DsSpace.pagePadH,
+                    top = DsSpace.pagePadH,
+                    bottom = reserve,
+                )
+                .heightIn(max = cardMaxHeight)
                 .shadow(DsElevation.dialog, RoundedCornerShape(DsRadius.card))
                 .background(scheme.surfaceContainer, RoundedCornerShape(DsRadius.card))
                 .padding(DsSpace.dialogPadH),

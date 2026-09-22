@@ -362,8 +362,18 @@ private const val LEGACY_HELPERS = "Xposed" + "Helpers"
 
 internal val CHANGELOGS = listOf(
     Changelog(
-        version = "1.12.0",
+        version = "1.12.1",
         tag = "当前",
+        items = listOf(
+            "修掉「点开功能卡片后浮层太靠下」：详情 / 单选 / 确认三个浮层都铺在主界面 Scaffold 的内容区里，而底部导航栏是 Scaffold 后画上去的 —— 卡片底部被底栏盖住，正文看不全、关闭按钮点不到。原来只避开系统导航条，现在把底栏高度也让出来（与系统导航条取大者，不叠加成两层空白）",
+            "浮层卡片整体限高：以前只给正文限 320dp、卡片本身不限，屏幕一矮就顶出屏幕外。现在按屏幕高算出卡片上限，中段（详情正文 / 选项列表）跟随剩余空间压缩并内部滚动 —— 标题与底部按钮始终在屏幕内；屏幕够高时卡片仍然收着长",
+            "同一处理覆盖规则管理页的「从 URL 导入」与「规则明细」两个浮层，以及风险开关的确认浮层；底部让位与限高两处计算集中在 ui/component/DialogInsets.kt",
+            "功能开关、配置键、hook 逻辑、规则引擎与解析护栏全部未改动",
+        ),
+    ),
+    Changelog(
+        version = "1.12.0",
+        tag = "稳定版",
         items = listOf(
             "规则管理页从 View 搬进 Compose：删掉独立的 RuleManagerActivity（XML 布局 + MaterialAlertDialogBuilder），改成与其余页面同一套令牌与组件的二级页；导入 / 查看 / 删除三个弹框全部自绘。至此模块界面 100% 是 Compose + miuix，不再有 View 页观感割裂",
             "修掉规则库统计的主线程 IO：原本在组合期直接读规则库并全量解析启用中的规则，改为协程 + IO 线程，并用修订号在改动后触发重算（替代原来的 ActivityResult 回调）",

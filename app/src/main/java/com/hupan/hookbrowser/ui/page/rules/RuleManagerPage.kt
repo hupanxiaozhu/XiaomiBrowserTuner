@@ -33,12 +33,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -75,6 +75,8 @@ import com.hupan.hookbrowser.ui.DsRadius
 import com.hupan.hookbrowser.ui.DsSpace
 import com.hupan.hookbrowser.ui.DsType
 import com.hupan.hookbrowser.ui.component.ConfirmDialog
+import com.hupan.hookbrowser.ui.component.dialogCardMaxHeight
+import com.hupan.hookbrowser.ui.component.rememberDialogBottomReserve
 import com.hupan.hookbrowser.ui.navigation.LocalNavigator
 import com.hupan.hookbrowser.ui.utils.pageContentPadding
 import com.hupan.hookbrowser.ui.utils.pageScroll
@@ -403,7 +405,7 @@ private fun UrlInputDialog(
     // 每次打开都从空开始：记住上次那个 URL 只会让人误以为「这次是再导入一遍」
     var url by remember(shown) { mutableStateOf("") }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -415,13 +417,22 @@ private fun UrlInputDialog(
                 ),
         )
 
+        // 二级页没有底栏，只避开系统导航条；卡片整体限高，内容再长也不会把按钮顶出屏幕
+        val reserve = rememberDialogBottomReserve()
+        val cardMaxHeight = dialogCardMaxHeight(maxHeight, reserve)
+
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .widthIn(max = DsSpace.contentMaxWidth)
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = DsSpace.pagePadH, vertical = DsSpace.pagePadH)
+                .padding(
+                    start = DsSpace.pagePadH,
+                    end = DsSpace.pagePadH,
+                    top = DsSpace.pagePadH,
+                    bottom = reserve,
+                )
+                .heightIn(max = cardMaxHeight)
                 .shadow(DsElevation.dialog, RoundedCornerShape(DsRadius.card))
                 .background(scheme.surfaceContainer, RoundedCornerShape(DsRadius.card))
                 .padding(DsSpace.dialogPadH),
@@ -498,7 +509,7 @@ private fun RuleDetailDialog(
     BackHandler(enabled = true) { onDismiss() }
 
     val scheme = MiuixTheme.colorScheme
-    Box(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -510,13 +521,21 @@ private fun RuleDetailDialog(
                 ),
         )
 
+        val reserve = rememberDialogBottomReserve()
+        val cardMaxHeight = dialogCardMaxHeight(maxHeight, reserve)
+
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .widthIn(max = DsSpace.contentMaxWidth)
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = DsSpace.pagePadH, vertical = DsSpace.pagePadH)
+                .padding(
+                    start = DsSpace.pagePadH,
+                    end = DsSpace.pagePadH,
+                    top = DsSpace.pagePadH,
+                    bottom = reserve,
+                )
+                .heightIn(max = cardMaxHeight)
                 .shadow(DsElevation.dialog, RoundedCornerShape(DsRadius.card))
                 .background(scheme.surfaceContainer, RoundedCornerShape(DsRadius.card))
                 .padding(DsSpace.dialogPadH),
@@ -538,7 +557,9 @@ private fun RuleDetailDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = DsSpace.md)
-                    // 与详情浮层同一套约束：最高 320dp，超出内部滚动
+                    // 与详情浮层同一套约束：最高 320dp，超出内部滚动；
+                    // fill = false 让它在卡片剩余空间不足时先被压缩，按钮不会被顶出去
+                    .weight(1f, fill = false)
                     .heightIn(max = 320.dp)
                     .verticalScroll(rememberScrollState()),
             ) {

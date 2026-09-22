@@ -130,6 +130,10 @@ internal fun MainPage() {
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
+            // 三个浮层都铺在这个 Box 里，而底部导航栏是 Scaffold 后画上去的 ——
+            // 不让出这一层高度的话，卡片底部会被底栏压住（关闭按钮点不到）。
+            val dialogBottomInset = innerPadding.calculateBottomPadding()
+
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
@@ -178,6 +182,7 @@ internal fun MainPage() {
                     if (value && RISKY_CONFIRMS.containsKey(key)) detailShown = false
                     update(key, value)
                 },
+                bottomInset = dialogBottomInset,
             )
 
             val option = optionTarget
@@ -191,6 +196,7 @@ internal fun MainPage() {
                     optionTarget = null
                 },
                 onDismiss = { optionTarget = null },
+                bottomInset = dialogBottomInset,
             )
 
             val risky = confirmKey
@@ -204,6 +210,7 @@ internal fun MainPage() {
                     confirmKey = null
                 },
                 onDismiss = { confirmKey = null },
+                bottomInset = dialogBottomInset,
             )
         }
     }

@@ -541,14 +541,18 @@ internal fun VersionTag(tag: String, current: Boolean) {
 /**
  * 详情四段。内容偏长，这里自己限高并允许纵向滚动 —— 详情浮层不滚动的话
  * 长文本会把卡片顶出屏幕。
+ *
+ * @param modifier 由浮层传入（通常是 `Modifier.weight(1f, fill = false)`）：
+ *        让本段的限高跟着卡片剩余空间走，而不是固定 320dp。
  */
 @Composable
-internal fun DetailBody(detail: Detail) {
+internal fun DetailBody(detail: Detail, modifier: Modifier = Modifier) {
     val scheme = MiuixTheme.colorScheme
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            // 详情正文最高 320dp（约一屏），超出内部滚动；这不是间距令牌，是内容约束
+            // 详情正文最高 320dp（约一屏），超出内部滚动；这不是间距令牌，是内容约束。
+            // 浮层给的 weight 限制更紧时以那份为准（heightIn 取两者中的小值）。
             .heightIn(max = 320.dp)
             .verticalScroll(rememberScrollState()),
     ) {

@@ -17,11 +17,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,6 +32,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.hupan.hookbrowser.ui.DetailBody
 import com.hupan.hookbrowser.ui.DsColor
 import com.hupan.hookbrowser.ui.DsElevation
@@ -52,6 +55,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * @param isOn 读某开关键当前值
  * @param onDismiss 关闭
  * @param onToggle 在浮层里直接切换本项（**不关窗**，可连着点几下看效果）
+ * @param bottomInset 宿主底栏占的高度（主界面传入；详见 [rememberDialogBottomReserve]）
  */
 @Composable
 internal fun DetailDialog(
@@ -60,12 +64,13 @@ internal fun DetailDialog(
     isOn: (String) -> Boolean,
     onDismiss: () -> Unit,
     onToggle: (String, Boolean) -> Unit,
+    bottomInset: Dp = 0.dp,
 ) {
     if (!shown) return
 
     BackHandler(enabled = true) { onDismiss() }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         // 遮罩：点击空白处关闭（去掉水波纹，整屏涟漪很丑）
         Box(
             modifier = Modifier
@@ -78,15 +83,27 @@ internal fun DetailDialog(
                 ),
         )
 
-        val item = target ?: return@Box
+        val item = target ?: return@BoxWithConstraints
         val on = isOn(item.key)
+        // 底部让位：底栏 / 系统导航条取大者，再加一层页面边距，卡片不会贴着底栏
+        val reserve = rememberDialogBottomReserve(bottomInset)
+        // 卡片最高只能占「屏幕高 - 底部让位 - 顶部留白」：超出时正文自己滚动，
+        // 标题与底部按钮始终在屏幕内 —— 之前只给正文限高 320dp，卡片整体没限，
+        // 屏幕一矮就顶出屏幕外，按钮跟着被推到看不见的地方。
+        val cardMaxHeight = dialogCardMaxHeight(maxHeight, reserve)
+
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .widthIn(max = DsSpace.contentMaxWidth)
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = DsSpace.pagePadH, vertical = DsSpace.pagePadH)
+                .padding(
+                    start = DsSpace.pagePadH,
+                    end = DsSpace.pagePadH,
+                    top = DsSpace.pagePadH,
+                    bottom = reserve,
+                )
+                .heightIn(max = cardMaxHeight)
                 .shadow(DsElevation.dialog, RoundedCornerShape(DsRadius.card))
                 .background(
                     MiuixTheme.colorScheme.surfaceContainer,
@@ -105,7 +122,8 @@ internal fun DetailDialog(
                 StatusPill(on)
             }
 
-            DetailBody(item.detail)
+            // fill = false：屏幕够高时卡片收着长（不撑满），不够高时正文才被压到限高并滚动
+            DetailBody(item.detail, Modifier.weight(1f, fill = false))
 
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = DsSpace.xl),

@@ -21,8 +21,8 @@ android {
         targetSdk = 34
         // 1.11.0：设置界面按「三 Tab + 二级页」重建（Compose + miuix + navigation3），
         // 功能开关、配置键、hook 逻辑一行未动。
-        versionCode = 35
-        versionName = "1.12.0"
+        versionCode = 36
+        versionName = "1.12.1"
     }
 
     buildTypes {
