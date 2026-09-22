@@ -19,10 +19,10 @@ android {
         // service 库要求 26（它用到 Android 8.0 起的 API）；模块本身不跑在低版本设备上
         minSdk = 26
         targetSdk = 34
-        // 1.11.0：设置界面按「三 Tab + 二级页」重建（Compose + miuix + navigation3），
-        // 功能开关、配置键、hook 逻辑一行未动。
-        versionCode = 36
-        versionName = "1.12.1"
+        // 1.14.0：新增「用户脚本」（油猴式 .user.js，复用 onPageFinished 注入通道），
+        // 注入通道抽成共享件 webpage/PageInjection；其余功能与 hook 逻辑未动。
+        versionCode = 38
+        versionName = "1.14.0"
     }
 
     buildTypes {

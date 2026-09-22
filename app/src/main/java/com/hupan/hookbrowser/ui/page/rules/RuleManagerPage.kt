@@ -23,8 +23,6 @@ package com.hupan.hookbrowser.ui.page.rules
 
 import android.content.Context
 import android.net.Uri
-import android.provider.OpenableColumns
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -185,10 +183,10 @@ internal fun RuleManagerPage() {
                 }
 
                 if (!loaded) {
-                    item { NoteCard("正在读取规则库…", "") }
+                    item { LibraryNoteCard("正在读取规则库…", "") }
                 } else if (sets.isEmpty()) {
                     item {
-                        NoteCard(
+                        LibraryNoteCard(
                             title = "还没有导入任何规则",
                             body = "导入后浏览器会在数秒内自动生效，不需要重启，也不需要再开别的开关。",
                         )
@@ -353,34 +351,6 @@ private fun RuleSetCard(
         ) {
             TextButton(text = "查看", onClick = onView)
             TextButton(text = "删除", onClick = onDelete)
-        }
-    }
-}
-
-/** 纯说明卡（空态 / 读取中），与其余卡片同一套圆角与内边距。 */
-@Composable
-private fun NoteCard(title: String, body: String) {
-    val scheme = MiuixTheme.colorScheme
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(scheme.surfaceContainer, RoundedCornerShape(DsRadius.card))
-            .padding(horizontal = DsSpace.cardPadH, vertical = DsSpace.cardPadV),
-    ) {
-        Text(
-            text = title,
-            fontSize = DsType.title,
-            fontWeight = FontWeight.SemiBold,
-            color = scheme.onSurface,
-        )
-        if (body.isNotEmpty()) {
-            Text(
-                text = body,
-                fontSize = DsType.body,
-                lineHeight = DsType.lineBody,
-                color = scheme.onBackgroundVariant,
-                modifier = Modifier.padding(top = DsSpace.sm),
-            )
         }
     }
 }
@@ -611,15 +581,7 @@ private suspend fun remove(context: Context, set: AdRuleSet) {
 
 /** 读本地文件（SAF uri）的文本内容；读不到返回 null。 */
 private suspend fun readText(context: Context, uri: Uri): String? =
-    withContext(Dispatchers.IO) {
-        runCatching {
-            context.contentResolver.openInputStream(uri)?.use { ins ->
-                val bytes = ins.readBytes()
-                val cut = bytes.size.coerceAtMost(MAX_FILE_BYTES)
-                String(bytes, 0, cut, Charsets.UTF_8)
-            }
-        }.getOrNull()
-    }
+    readSafText(context, uri, MAX_FILE_BYTES)
 
 /**
  * 解析 + 落盘。规则集按**来源**去重：同一个 URL / 文件重复导入是覆盖，不是堆积。
@@ -715,20 +677,10 @@ private fun nameOfUrl(url: String): String {
 }
 
 /** 从 SAF uri 取显示名，取不到就退回路径末段。 */
-private fun displayName(context: Context, uri: Uri): String {
-    val fromProvider = runCatching {
-        context.contentResolver
-            .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?.use { c ->
-                if (c.moveToFirst() && c.columnCount > 0) c.getString(0) else null
-            }
-    }.getOrNull()
-    return fromProvider ?: uri.lastPathSegment ?: "本地规则文件"
-}
+private fun displayName(context: Context, uri: Uri): String =
+    safDisplayName(context, uri, "本地规则文件")
 
-private fun toast(context: Context, msg: String) {
-    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-}
+private fun toast(context: Context, msg: String) = libraryToast(context, msg)
 
 /** 单份规则文本的读取上限：超出部分截断（规则条数另受 AdRuleParser.MAX_RULES 约束） */
 private const val MAX_FILE_BYTES = 512 * 1024

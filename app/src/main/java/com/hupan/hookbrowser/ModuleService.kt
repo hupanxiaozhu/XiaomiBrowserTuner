@@ -3,6 +3,7 @@ package com.hupan.hookbrowser
 import android.content.Context
 import android.content.SharedPreferences
 import com.hupan.hookbrowser.adblock.AdRuleStore
+import com.hupan.hookbrowser.scripts.UserScriptStore
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
 import java.util.Collections
@@ -70,9 +71,10 @@ internal object ModuleService {
     fun bind(context: Context) {
         appCtx = context.applicationContext
         if (!registered.compareAndSet(false, true)) return
-        // 首次连接时把两组都推一遍：用户可能是装完模块直接开浏览器，从没进过设置页
+        // 首次连接时把三组都推一遍：用户可能是装完模块直接开浏览器，从没进过设置页
         pending.add(Config.PREFS_NAME)
         pending.add(AdRuleStore.PREFS)
+        pending.add(UserScriptStore.PREFS)
         runCatching {
             XposedServiceHelper.registerListener(object : XposedServiceHelper.OnServiceListener {
                 override fun onServiceBind(s: XposedService) {

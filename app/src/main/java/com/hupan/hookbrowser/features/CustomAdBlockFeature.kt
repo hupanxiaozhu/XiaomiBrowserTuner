@@ -5,16 +5,16 @@ import com.hupan.hookbrowser.Config
 import com.hupan.hookbrowser.HookedCall
 import com.hupan.hookbrowser.Hooks
 import com.hupan.hookbrowser.XLog
-import com.hupan.hookbrowser.Xp
 import com.hupan.hookbrowser.adblock.AdElementCss
 import com.hupan.hookbrowser.adblock.AdRuleChannel
 import com.hupan.hookbrowser.adblock.AdRuleCodec
 import com.hupan.hookbrowser.adblock.AdRuleEngine
 import com.hupan.hookbrowser.adblock.AdRuleParser
 import com.hupan.hookbrowser.adblock.HostAdRules
+import com.hupan.hookbrowser.webpage.PageConsumer
+import com.hupan.hookbrowser.webpage.PageInjection
 import java.io.ByteArrayInputStream
 import java.io.InputStream
-import java.lang.reflect.Method
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -52,18 +52,18 @@ import java.util.concurrent.atomic.AtomicInteger
  * ## 怎么保证覆盖到所有 WebView
  *
  * `shouldInterceptRequest` 是**子类 override** 的方法 —— hook 基类拦不到不调 super 的子类，
- * 所以只 hook 一个类名肯定漏。这里三条路一起走：
+ * 所以只 hook 一个类名肯定漏。这里两条路一起走：
  *
- * 1. hook `miui.browser.webview.BrowserWebView#setWebViewClient` 与
- *    `hyper.webkit.WebView#setWebViewClient`：**每设置一次 client，就把那个实例的类挂上**。
- *    这是覆盖面的主力（新闻详情、搜索建议、自定义 Tab 里的 WebView 全都会经过 setter）。
- * 2. 直接按类名挂已知的主 client `com.android.browser.Tab$MainWebViewClient`：它可能在模块
- *    注入之前就被设置好了，setter 那条路会错过。
- * 3. 兜底挂 `hyper.webkit.WebViewClient` 基类的 `shouldInterceptRequest`：只 override 了
+ * 1. 「捕获每个 WebViewClient 类」交给共享通道 [PageInjection]（setWebViewClient 动态捕获 +
+ *    主 client 按类名补挂），本功能在它的 onClientClass 通知里挂自己的两个重载。
+ * 2. 兜底挂 `hyper.webkit.WebViewClient` 基类的 `shouldInterceptRequest`：只 override 了
  *    String 重载的子类会先把请求交给基类，这条路能接住。
  *
  * 已挂载的类名进 [hookedClasses] 去重 —— 同一个 WebViewClient 类被多次 hook 会让同一个请求
  * 走多遍判定，虽然结果一样但白烧 CPU。
+ *
+ * `onPageFinished`（元素隐藏 CSS 的注入时机）1.14.0 起也由 [PageInjection] 统一挂载，
+ * 这里只注册一个消费者回调（与用户脚本共用同一条注入链路）。
  *
  * ## 三套内核 = 三套同名类型（1.8.1 踩过的坑）
  *
@@ -84,17 +84,8 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 internal object CustomAdBlockFeature : Feature(Config.AD_CUSTOM_RULES) {
 
-    /** 宿主的主 WebView（hyper 内核的封装类） */
-    private const val CLS_BROWSER_WEBVIEW = "miui.browser.webview.BrowserWebView"
-
-    /** 内核 WebView 基类：所有 setWebViewClient 调用都要经过它（或它的子类） */
-    private const val CLS_HYPER_WEBVIEW = "hyper.webkit.WebView"
-
     /** 内核 WebViewClient 基类（兜底挂它的 shouldInterceptRequest） */
     private const val CLS_HYPER_CLIENT = "hyper.webkit.WebViewClient"
-
-    /** 主浏览页的 WebViewClient（反汇编确认它实现了 shouldInterceptRequest） */
-    private const val CLS_MAIN_CLIENT = "com.android.browser.Tab\$MainWebViewClient"
 
     /** 规则库轮询间隔：宿主改完设置在几秒内生效，又不会一直读文件 */
     private const val WATCH_INTERVAL_MS = 8000L
@@ -128,14 +119,8 @@ internal object CustomAdBlockFeature : Feature(Config.AD_CUSTOM_RULES) {
     @Volatile
     private var watchStarted = false
 
-    /** 已挂载的 WebViewClient 类名（去重，见类注释） */
+    /** 已挂载 shouldInterceptRequest 的 WebViewClient 类名（去重，见类注释） */
     private val hookedClasses = HashSet<String>()
-
-    /** 已挂载 `onPageFinished` 的类名（去重；它沿继承链找，命中的可能是父类） */
-    private val hookedFinished = HashSet<String>()
-
-    /** `evaluateJavascript` 的查找缓存（按 WebView 实现类；null 表示这个类没有该方法） */
-    private val evalMethods = HashMap<Class<*>, Method?>()
 
     /** 累计命中数（只用于日志抽样） */
     private val blocked = AtomicInteger()
@@ -150,36 +135,21 @@ internal object CustomAdBlockFeature : Feature(Config.AD_CUSTOM_RULES) {
     private val sampledClasses = HashSet<String>()
 
     override fun install(cl: ClassLoader) {
-        hookClientSetters(cl)
-        hookKnownClient(cl)
+        // 注入通道共享：捕获 client 类 / 挂 onPageFinished / evaluateJavascript 都归它。
+        // 注入时机关闸在通道的消费者回调里（active()），与本功能的开关一致。
+        PageInjection.register(object : PageConsumer {
+            override fun active(): Boolean = on()
+            override fun onClientClass(cls: Class<*>) = hookClient(cls)
+            override fun onPageFinished(view: Any, url: String?) = injectCss(view)
+        })
+        PageInjection.install(cl)
         hookBaseClient(cl)
         startWatcher()
     }
 
     // ===================== hook 安装 =====================
 
-    /** ① 每次设置 WebViewClient 都把那个实例的类挂上 —— 覆盖面主力 */
-    private fun hookClientSetters(cl: ClassLoader) {
-        for (name in listOf(CLS_BROWSER_WEBVIEW, CLS_HYPER_WEBVIEW)) {
-            Hooks.hookAfter(cl, name, "setWebViewClient") { p ->
-                if (!on()) return@hookAfter
-                val client = p.args.getOrNull(0) ?: return@hookAfter
-                hookClient(client.javaClass)
-            }
-        }
-    }
-
-    /** ② 主浏览页的 client 可能在模块注入前就设好了，按类名补一刀 */
-    private fun hookKnownClient(cl: ClassLoader) {
-        val cls = Xp.findClass(CLS_MAIN_CLIENT, cl)
-        if (cls == null) {
-            XLog.v("未找到 $CLS_MAIN_CLIENT，改由 setWebViewClient 动态捕获")
-            return
-        }
-        hookClient(cls)
-    }
-
-    /** ③ 基类兜底：只 override 了 String 重载的子类会把请求交给基类 */
+    /** 基类兜底：只 override 了 String 重载的子类会把请求交给基类 */
     private fun hookBaseClient(cl: ClassLoader) {
         Hooks.hook(cl, CLS_HYPER_CLIENT, "shouldInterceptRequest") { p -> intercept(p) }
     }
@@ -193,73 +163,20 @@ internal object CustomAdBlockFeature : Feature(Config.AD_CUSTOM_RULES) {
         if (n > 0) {
             XLog.v("自定义规则：已挂 ${cls.name}#shouldInterceptRequest（$n 个重载），累计 ${hookedClasses.size} 个 client 类")
         }
-        hookPageFinished(cls)
-    }
-
-    /**
-     * 给同一个 client 挂 `onPageFinished`，在页面加载完成后注入元素隐藏 CSS。
-     *
-     * ## 为什么沿继承链往上找
-     *
-     * `XposedBridge.hookAllMethods` 只挂**该类自己声明**的方法。`onPageFinished` 绝大多数
-     * client 并不重写（重写它没意义），所以直接在子类上找会返回 0 条；必须沿 `superclass`
-     * 往上走，直到某一层真的声明了它。这一层挂上后，**所有子类的实例**都会走到 ——
-     * 比逐个类挂更省，也顺带覆盖了后面才出现的匿名 client。
-     *
-     * 挂到 `android.webkit.WebViewClient` 也无妨（我们只在本进程内 hook），
-     * 那是最好的兜底层。
-     */
-    private fun hookPageFinished(cls: Class<*>) {
-        var cur: Class<*> = cls
-        while (true) {
-            val first = synchronized(hookedFinished) { hookedFinished.add(cur.name) }
-            if (!first) return
-            val n = Hooks.hookAllAfter(cur, "onPageFinished") { p ->
-                val view = p.args.getOrNull(0)
-                if (view != null) injectCss(view)
-            }
-            if (n > 0) return
-            cur = cur.superclass ?: return
-        }
     }
 
     // ===================== 元素隐藏注入 =====================
 
     /**
-     * 把元素隐藏 CSS 注入页面。取不到 WebView / 没规则 / 没有 `evaluateJavascript` 都静默跳过。
-     *
-     * `onPageFinished` 在主线程回调，`evaluateJavascript` 也要求主线程 —— 时机正好。
-     *
-     * ## 为什么反射找方法而不是强转 `android.webkit.WebView`
-     *
-     * 宿主里 hyper / miui / 百度 SDK 三套 WebView **互不相干**（`hyper.webkit.WebView` 有
-     * 212 个自己的方法，是内核自带的独立实现，不是 `android.webkit.WebView` 的子类）。
-     * 写死强转会一个都注入不进去；按「类里有没有 `evaluateJavascript(String, ?)`」来找，
-     * 三套内核通吃。方法的第二个参数是各自的 `ValueCallback` 接口，传 null 即可 ——
-     * 不关心回调，也不引入任何一套内核的类型。
+     * 把元素隐藏 CSS 注入页面（onPageFinished 由 [PageInjection] 回调，主线程）。
+     * 没规则 / 没有 `evaluateJavascript` 都静默跳过。
      */
     private fun injectCss(view: Any) {
         val js = cssJs
         if (js.isEmpty()) return
-        val m = evalMethod(view.javaClass) ?: return
-        // 第二个参数是各内核自己的 ValueCallback 接口，我们不关心回调，传 null 即可。
-        // 显式写成 `null as Any?`：Kotlin 对 vararg 位的裸 null 会有歧义告警。
-        runCatching { m.invoke(view, js, null as Any?) }
-            .onFailure { XLog.v("【元素隐藏】注入失败：${it.javaClass.simpleName}") }
-    }
-
-    /** 找 `evaluateJavascript(String, ValueCallback)` 并缓存；找不到缓存 null（不重复扫） */
-    private fun evalMethod(cls: Class<*>): Method? = synchronized(evalMethods) {
-        if (evalMethods.containsKey(cls)) return evalMethods[cls]
-        val m = runCatching {
-            cls.methods.firstOrNull {
-                it.name == "evaluateJavascript" &&
-                    it.parameterTypes.size == 2 &&
-                    it.parameterTypes[0] == String::class.java
-            }?.apply { isAccessible = true }
-        }.getOrNull()
-        evalMethods[cls] = m
-        m
+        if (!PageInjection.injectJs(view, js)) {
+            XLog.v("【元素隐藏】注入失败：${view.javaClass.simpleName}")
+        }
     }
 
     // ===================== 拦截判定 =====================

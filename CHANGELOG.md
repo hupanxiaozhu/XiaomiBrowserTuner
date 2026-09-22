@@ -1,5 +1,68 @@
 # Changelog
 
+## 1.14.0 (versionCode 38) —— 用户脚本
+
+### 改了什么
+
+- **新增「用户脚本」**：导入油猴式 `.user.js`，按脚本头部的 `@match` / `@include` /
+  `@exclude` 匹配页面，页面加载完成后注入执行。管「加功能」——自动展开、去跳转中间页
+  这类 CSS 做不到的事；与「自定义拦截规则」（拦与藏）是互补关系。
+  脚本管理并入「规则」Tab（列表 / 启停 / 删除 / 查看源码，与规则管理页同构）。
+- **注入通道抽成共享件** `webpage/PageInjection`：原来「client 捕获 + onPageFinished 挂载 +
+  evaluateJavascript 反射调用」长在 `CustomAdBlockFeature` 私有方法里，且以它自己的开关为闸 ——
+  只开脚本、不开自定义规则时通道根本不会被挂上。现在通道独立，元素隐藏 CSS 与用户脚本
+  各自注册消费者，捕获逻辑单例化。
+- **注入语义（与油猴的差别，导入时逐条说清）**：只注入 http/https 页面（`nativechannel://`
+  等宿主内部页按 scheme 过滤，脚本不会注入进宿主 UI）；`document-start` 降级为加载完成后执行
+  （不做 HTML 流改写）；GM_* API 不支持，声明过的脚本照常注入（有降级路径的能正常用）。
+- **安全边界**：总开关 `script_userscripts` **默认关** + 开启前风险确认；
+  只支持本地文件导入（不做 URL 导入，避免远程代码供应链）；metadata 检出
+  GM API / document-start / 全域匹配时弹确认浮层，用户点头才落盘；
+  单脚本 380K 字符、共 64 个上限（ModuleService 单 value 400K 字符是硬天花板）。
+
+### 存储与同步
+
+- 脚本库存独立 SP 组 `userscripts`（与 `adrules` 物理隔离，互不挤占上限）；
+  **每脚本一个 key**（`s_<id>` → JSON）+ 索引 key —— 整库一个 value 的话，
+  两三个大脚本就会顶到「单 value 超限静默跳过」，每脚本一 key 后上限变成「单脚本 380K」，
+  导入时超限明确拒绝。
+- 宿主侧 `UserScriptChannel` 读端与 `AdRuleChannel` 同构（remote preferences + 5 秒节流 +
+  指纹比对）；`UserScriptFeature` 8 秒轮询，指纹变了才重编译匹配表，回调只读 @Volatile 引用。
+- verify_static.py 新增「脚本库组名两处一致」检查（与规则库同款）。
+
+### 未动的部分
+
+去广告 / 界面精简 / 高级各功能的 hook 逻辑、规则引擎与解析护栏、检查更新，全部未改动。
+
+## 1.13.0 (versionCode 37) —— 检查更新
+
+### 改了什么
+
+**功能开关、配置键、hook 逻辑、规则引擎一行未动**，只动模块 App 侧。
+
+- **关于页新增「检查更新」**：点按即查 GitHub Releases（`/releases/latest`，无需 token）。
+  发现新版本时弹更新日志与下载入口——按钮跳浏览器（优先 APK 资产直链，退回 Releases 页），
+  下载 / 校验 / 安装交给系统，不做应用内下载（省掉存储权限与安装会话）。
+  已是最新、检查失败也有明确反馈。
+- **打开应用时自动检查**：`MainActivity.onCreate` 触发，默认开启、每 24 小时至多一次
+  （按上次**成功**检查时间节流，失败下次打开重试），**失败与「已是最新」一律静默**，
+  只有发现新版本才弹窗；本进程只查一次，旋转重建不重复。
+- **关于页新增「自动检查更新」开关**：存独立本地 SP（组名 `update`），
+  **不进宿主开关表**——宿主不需要这条数据，也不该被全量镜像进框架数据库。
+
+### 实现说明
+
+- **零新增依赖**：网络用 JDK 自带 `HttpURLConnection`（OkHttp 约 +800KB，不值）；
+  JSON 复用工程已有的 `kotlinx-serialization-json`。新增文件：
+  `update/UpdateChecker.kt`（取数 + 版本比较 + 节流）、
+  `ui/UpdateState.kt`（Compose 可观察状态）、`ui/component/UpdateDialog.kt`（浮层）。
+- **版本号按段比较**（`1.9.0 < 1.10.0`），绝不字符串比较。
+- **请求细节**：超时 5s/8s 快速放弃；GitHub 限流（HTTP 403）与 DNS / 超时都翻成
+  用户能看懂的一句话；同一时刻只允许一个请求在飞，重复点按给「上一次检查还没结束」。
+- **浮层**沿用 1.12.1 的贴底让位 + 限高方案（`DialogInsets`），长更新日志内部滚动。
+- 网络只发生在**模块进程**，hook 侧与宿主进程完全无感知；`INTERNET` 权限
+  1.8.0 规则 URL 导入时就有了，本版未新增权限。
+
 ## 1.12.1 (versionCode 36) —— 浮层不再被底部导航栏压住
 
 ### 修了什么

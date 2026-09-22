@@ -214,6 +214,24 @@ internal val FUNCTION_TOGGLES = listOf(
         ),
     ),
     Toggle(
+        key = Config.SCRIPT_USERSCRIPTS,
+        title = "用户脚本",
+        summary = "⚠ 在匹配的网页里执行导入的 JavaScript",
+        default = Config.defaultOf(Config.SCRIPT_USERSCRIPTS),
+        detail = Detail(
+            purpose = "执行你导入的用户脚本（油猴式 .user.js）：按脚本头部的 @match / @include " +
+                "匹配页面，页面加载完成后注入执行。管「加功能」——自动展开、去跳转中间页这类 " +
+                "CSS 做不到的事；与自定义拦截规则是互补关系。",
+            target = "复用自定义规则的注入通道：WebViewClient#onPageFinished → " +
+                "evaluateJavascript（webpage/PageInjection），不新增 hook 点。",
+            effect = "脚本库存在独立组 userscripts，改完数秒内自动生效，不用重启浏览器。" +
+                "document-start 声明降级为加载完成后执行；GM_* API 不支持（脚本照常注入，" +
+                "有降级路径的能正常用）；只注入 http/https 页面，宿主内部页不碰。",
+            caveat = "脚本能力等同网页自身代码，只导入来源可信的脚本。默认关闭，" +
+                "开启前会弹风险确认。",
+        ),
+    ),
+    Toggle(
         key = Config.MISC_UNLOCK_PREF,
         title = "解锁隐藏设置项",
         summary = "⚠ 强制放出宿主设置页的隐藏项",
@@ -271,9 +289,9 @@ internal val UI_TOGGLES = FUNCTION_TOGGLES.filter {
     it.key in setOf(Config.UI_DOWNLOAD, Config.UA_PATCH, Config.UI_SEARCH_ENGINE)
 }
 
-/** 「规则」Tab：自定义规则与宿主引擎接管。 */
+/** 「规则」Tab：自定义规则、宿主引擎接管与用户脚本。 */
 internal val RULES_TOGGLES = FUNCTION_TOGGLES.filter {
-    it.key in setOf(Config.AD_CUSTOM_RULES, Config.AD_HOST_OVERRIDE)
+    it.key in setOf(Config.AD_CUSTOM_RULES, Config.AD_HOST_OVERRIDE, Config.SCRIPT_USERSCRIPTS)
 }
 
 /** 分区：高级（有副作用，默认关闭）。 */
@@ -304,6 +322,11 @@ internal val RISKY_CONFIRMS: Map<String, Pair<String, String>> = mapOf(
         "确认开启「解锁隐藏设置项」？" to
             "该开关会强制宿主设置页里每一个条目都变为可见。它作用于整个设置页，若宿主某条目" +
             "因机型不受支持而本应隐藏，放出来后点击可能异常；也请记住这是默认关闭的项。"
+        ),
+    Config.SCRIPT_USERSCRIPTS to (
+        "确认开启「用户脚本」？" to
+            "开启后，你导入的脚本会在匹配的网页里执行，能力等同网页自身代码。" +
+            "请只导入来源可信的脚本；不需要时建议保持关闭。"
         ),
 )
 
@@ -362,8 +385,30 @@ private const val LEGACY_HELPERS = "Xposed" + "Helpers"
 
 internal val CHANGELOGS = listOf(
     Changelog(
-        version = "1.12.1",
+        version = "1.14.0",
         tag = "当前",
+        items = listOf(
+            "新增「用户脚本」：导入油猴式 .user.js，按 @match / @include 匹配页面，页面加载完成后注入执行——自动展开、去跳转中间页这类 CSS 做不到的事终于能做。脚本管理并入「规则」Tab",
+            "注入通道抽成共享件（webpage/PageInjection）：自定义规则的元素隐藏 CSS 与用户脚本共用同一条 onPageFinished → evaluateJavascript 链路，捕获逻辑单例化，不再各自挂一遍",
+            "注入语义：只注入 http/https 页面（宿主内部页不碰）；document-start 降级为加载完成后执行；GM_* API 不支持——导入时检出这些差别会弹确认，点头才放行",
+            "安全边界：默认关闭 + 开启前风险确认；只支持本地文件导入（不做 URL 导入）；单脚本 380K 字符 / 共 64 个上限；脚本库独立 SP 组 userscripts，与规则库互不挤占",
+            "「规则」Tab 概况卡与副标题同步覆盖脚本统计；verify_static 增加脚本库组名两处一致检查",
+        ),
+    ),
+    Changelog(
+        version = "1.13.0",
+        tag = "稳定版",
+        items = listOf(
+            "新增「检查更新」：关于页点按即查 GitHub Releases，发现新版本时弹出更新日志与下载入口（跳浏览器下载 APK，不做应用内下载）",
+            "打开应用时自动检查：默认开启、每 24 小时至多一次，失败静默不打扰；关于页新增「自动检查更新」开关（本地设置，不进宿主开关表）",
+            "零新增依赖：网络用 HttpURLConnection，JSON 解析复用已有的 kotlinx-serialization-json；请求只在模块进程发出，hook 侧无感知",
+            "版本号按段比较（1.9.0 < 1.10.0），不按字符串；接口超时 5 秒快速放弃，GitHub 限流 / 无网时手动检查给出可读的失败说明",
+            "功能开关、配置键、hook 逻辑、规则引擎全部未改动",
+        ),
+    ),
+    Changelog(
+        version = "1.12.1",
+        tag = "稳定版",
         items = listOf(
             "修掉「点开功能卡片后浮层太靠下」：详情 / 单选 / 确认三个浮层都铺在主界面 Scaffold 的内容区里，而底部导航栏是 Scaffold 后画上去的 —— 卡片底部被底栏盖住，正文看不全、关闭按钮点不到。原来只避开系统导航条，现在把底栏高度也让出来（与系统导航条取大者，不叠加成两层空白）",
             "浮层卡片整体限高：以前只给正文限 320dp、卡片本身不限，屏幕一矮就顶出屏幕外。现在按屏幕高算出卡片上限，中段（详情正文 / 选项列表）跟随剩余空间压缩并内部滚动 —— 标题与底部按钮始终在屏幕内；屏幕够高时卡片仍然收着长",

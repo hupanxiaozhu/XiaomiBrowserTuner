@@ -58,6 +58,9 @@ internal object Config {
 
     /** 1.9.2：用自定义规则接管宿主 native 拦截引擎（改它的规则文件），破坏性操作，默认关 */
     const val AD_HOST_OVERRIDE = "ad_host_override"
+
+    /** 1.14.0：用户脚本（油猴式 .user.js），执行的是用户自选代码，默认关 */
+    const val SCRIPT_USERSCRIPTS = "script_userscripts"
     const val UI_SEARCH_ENGINE = "ui_search_engine"
     const val SEARCH_ENGINE_TARGET = "ui_search_engine_target"
 
@@ -81,6 +84,9 @@ internal object Config {
         // **默认 false**：这是唯一会改动宿主自身数据的开关，且做的是"换掉小米下发的规则"这种
         // 破坏性动作。用户明确要求时才开；关闭后自动从备份还原。
         AD_HOST_OVERRIDE to false,
+        // 1.14.0：用户脚本。**默认 false**：脚本在页面上下文执行的是用户自选代码，
+        // 能力等同网页自身；保守起步，开启前走风险确认。
+        SCRIPT_USERSCRIPTS to false,
         // 1.7.0：用户明确要求「常用引擎内置、无需在模块里手动开」→ 装上即生效（默认引擎 bing）
         UI_SEARCH_ENGINE to true,
         MISC_UNLOCK_PREF to false,

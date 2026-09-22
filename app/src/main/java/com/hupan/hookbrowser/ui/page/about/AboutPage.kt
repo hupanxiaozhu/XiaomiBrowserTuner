@@ -2,7 +2,8 @@
  * 「关于」Tab —— 模块信息与更新日志。
  *
  * 信息架构（1.11.0 定的铁律）：**一级页只放开关 + 入口**，长内容全部下沉二级页。
- * 所以这里只有四样东西：hero（版本）、一句话简介、四个二级页入口、当前版本这一条更新日志。
+ * 所以这里只有五样东西：hero（版本）、一句话简介、自动检查开关、五个二级页 / 动作入口、
+ * 当前版本这一条更新日志。「检查更新」是动作入口：点按即查，结果浮层由主界面持有。
  * 完整信息表与全部历史日志分别在「项目信息」「更新日志」两个二级页里。
  *
  * 设置入口放在关于页而不是功能页顶栏 —— 顶栏只留一个标题，顶部就一个视觉焦点。
@@ -31,6 +32,8 @@ import com.hupan.hookbrowser.ui.DsType
 import com.hupan.hookbrowser.ui.EntryDivider
 import com.hupan.hookbrowser.ui.EntryGroup
 import com.hupan.hookbrowser.ui.NavEntryRow
+import com.hupan.hookbrowser.ui.ToggleCard
+import com.hupan.hookbrowser.ui.UpdateState
 import com.hupan.hookbrowser.ui.moduleVersion
 import com.hupan.hookbrowser.ui.page.MainTab
 import com.hupan.hookbrowser.ui.utils.pageContentPadding
@@ -75,8 +78,27 @@ internal fun AboutPage(
 
             item { IntroCard() }
 
+            // 自动检查开关是纯模块侧设置（本地 SP），不进宿主开关表，也不吃总闸
+            item {
+                ToggleCard(
+                    title = "自动检查更新",
+                    summary = "打开应用时每 24 小时静默查一次 GitHub Releases，" +
+                        "发现新版本才提示；检查失败不打扰",
+                    checked = UpdateState.autoCheckEnabled,
+                    enabled = true,
+                    onCheckedChange = { UpdateState.setAutoCheckEnabled(context, it) },
+                    onShowDetail = {},
+                )
+            }
+
             item {
                 EntryGroup {
+                    NavEntryRow(
+                        title = "检查更新",
+                        summary = UpdateState.summary(),
+                        onClick = { UpdateState.checkManually(context) },
+                    )
+                    EntryDivider()
                     NavEntryRow(
                         title = "项目信息",
                         summary = "适配版本 · 包名 · 作用域 · 运行环境",

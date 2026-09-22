@@ -25,6 +25,7 @@ internal object Features {
         HostAdSwitchFeature,
         CustomAdBlockFeature,
         HostAdOverrideFeature,
+        UserScriptFeature,
         DownloadFeature,
         UaFeature,
         SearchEngineFeature,

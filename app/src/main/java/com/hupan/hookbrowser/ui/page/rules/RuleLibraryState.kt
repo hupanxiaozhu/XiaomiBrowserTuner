@@ -17,11 +17,12 @@ import androidx.compose.runtime.setValue
 import com.hupan.hookbrowser.adblock.AdRuleCodec
 import com.hupan.hookbrowser.adblock.AdRuleSet
 import com.hupan.hookbrowser.adblock.AdRuleStore
+import com.hupan.hookbrowser.scripts.UserScriptStore
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** 规则库概况：规则集数 / 启用中的条数 / 总条数。 */
+/** 规则库概况：规则集数 / 启用中的条数 / 总条数 / 脚本数。 */
 internal class RuleSummary(
     val sets: Int,
     val enabledSets: Int,
@@ -29,8 +30,10 @@ internal class RuleSummary(
     val enabledElements: Int,
     val totalRules: Int,
     val totalElements: Int,
+    val scripts: Int,
+    val enabledScripts: Int,
 ) {
-    val empty: Boolean get() = sets == 0
+    val empty: Boolean get() = sets == 0 && scripts == 0
 }
 
 /** 规则库修订号：管理页的每一次增删改都会 +1，让「规则」Tab 的概况卡重算。 */
@@ -52,6 +55,7 @@ internal object RuleLibraryState {
  */
 internal fun loadSummary(context: Context): RuleSummary {
     val sets = runCatching { AdRuleStore.load(context) }.getOrDefault(mutableListOf())
+    val scripts = runCatching { UserScriptStore.load(context) }.getOrDefault(mutableListOf())
     return RuleSummary(
         sets = sets.size,
         enabledSets = sets.count { it.enabled },
@@ -59,6 +63,8 @@ internal fun loadSummary(context: Context): RuleSummary {
         enabledElements = AdRuleCodec.enabledElements(sets).size,
         totalRules = AdRuleCodec.totalRules(sets),
         totalElements = AdRuleCodec.totalElements(sets),
+        scripts = scripts.size,
+        enabledScripts = scripts.count { it.enabled },
     )
 }
 

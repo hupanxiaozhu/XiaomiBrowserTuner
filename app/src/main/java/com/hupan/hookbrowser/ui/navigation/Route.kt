@@ -38,4 +38,8 @@ sealed interface Route : NavKey {
     /** 规则管理页：导入 / 启停 / 删除自定义拦截规则集。入口在「规则」Tab。 */
     @Serializable
     data object RuleManager : Route
+
+    /** 脚本管理页：导入 / 启停 / 删除用户脚本。入口在「规则」Tab（1.14.0）。 */
+    @Serializable
+    data object ScriptManager : Route
 }

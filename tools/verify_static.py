@@ -409,6 +409,17 @@ elif store_name != channel_name:
     problems.append('规则库组名两处不一致：AdRuleStore=%r AdRuleChannel=%r'
                     % (store_name, channel_name))
 
+# 脚本库（1.14.0）与规则库同构：模块进程写 userscripts、宿主进程读它，同款检查
+_sc_dir = os.path.join(PKG_DIR, 'scripts')
+script_store = _const_str(os.path.join(_sc_dir, 'UserScriptStore.kt'), 'PREFS')
+script_channel = _const_str(os.path.join(_sc_dir, 'UserScriptChannel.kt'), 'PREFS')
+if script_store is None or script_channel is None:
+    problems.append('脚本库组名没解析出来：UserScriptStore=%r UserScriptChannel=%r'
+                    % (script_store, script_channel))
+elif script_store != script_channel:
+    problems.append('脚本库组名两处不一致：UserScriptStore=%r UserScriptChannel=%r'
+                    % (script_store, script_channel))
+
 # ---------- 12. 每一项开关都写了详情 ----------
 # 1.11.0 起「点行弹详情」由 ui/FeatureCatalog.kt 的 Toggle.detail 驱动（Compose 界面的
 # 浮层读它）。少一条 = 点开是空弹窗；多一条 = 死代码。两者都不会报错，只能静态钉死。

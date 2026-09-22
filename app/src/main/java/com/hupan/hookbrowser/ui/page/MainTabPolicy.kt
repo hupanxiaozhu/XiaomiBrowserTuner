@@ -3,7 +3,7 @@
  *
  * 三个 Tab 各管一件事：
  *   - 功能：去广告 / 界面精简 / 高级三个分区的功能开关；
- *   - 规则：自定义拦截规则的两个开关 + 规则库概况 + 规则管理入口；
+ *   - 规则：拦截规则与用户脚本的开关 + 概况卡 + 规则管理 / 脚本管理入口；
  *   - 关于：项目信息与更新日志（长内容全部下沉到二级页）。
  *
  * 与「功能 / 日志 / 关于」那套（番茄）的差别：本模块的运行日志在 LSPosed 里看，
@@ -26,6 +26,6 @@ internal enum class MainTab(
     val icon: ImageVector,
 ) {
     Features("功能", "去广告 · 界面精简 · 高级", MiuixIcons.Tune),
-    Rules("规则", "自定义拦截规则与规则库", MiuixIcons.ListView),
+    Rules("规则", "自定义拦截规则与用户脚本", MiuixIcons.ListView),
     About("关于", "项目信息与更新日志", MiuixIcons.Info),
 }

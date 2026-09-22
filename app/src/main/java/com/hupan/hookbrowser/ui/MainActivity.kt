@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.hupan.hookbrowser.ModuleService
+import com.hupan.hookbrowser.ui.UpdateState
 import com.hupan.hookbrowser.ui.navigation.AppNavigation
 import com.hupan.hookbrowser.ui.page.ToggleState
 import com.hupan.hookbrowser.ui.theme.BrowserTheme
@@ -39,6 +40,10 @@ class MainActivity : ComponentActivity() {
         // SharedPreferences（主线程磁盘 IO）并写 snapshot state。放这里装载一次，
         // 页面只管读 ToggleState.values / strings。
         ToggleState.ensure(applicationContext)
+        // 检查更新：装载本地设置 + 自动检查（24 小时节流在 UpdateChecker 里，失败静默）。
+        // 只跑在模块进程，后台线程发请求，不碰宿主；本进程只查一次（旋转重建不重复）。
+        UpdateState.init(applicationContext)
+        UpdateState.autoCheck(applicationContext)
         setContent {
             BrowserTheme {
                 AppNavigation()

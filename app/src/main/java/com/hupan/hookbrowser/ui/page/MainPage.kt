@@ -16,7 +16,8 @@
  * 要能立刻反映到本页列表上，状态关在 remember 里就做不到。
  *
  * 三个浮层（详情 / 单选 / 风险确认）也统一在本页持有：切 Tab、进二级页再回来时状态一致，
- * 不需要每个 Tab 各带一份。
+ * 不需要每个 Tab 各带一份。更新浮层（UpdateDialog）的数据在 ui/UpdateState ——
+ * 触发点有两个（关于页手动检查 / MainActivity 自动检查），状态必须放在页面栈外面。
  */
 package com.hupan.hookbrowser.ui.page
 
@@ -38,9 +39,11 @@ import com.hupan.hookbrowser.ui.Detail
 import com.hupan.hookbrowser.ui.OptionItem
 import com.hupan.hookbrowser.ui.RISKY_CONFIRMS
 import com.hupan.hookbrowser.ui.ShownDetail
+import com.hupan.hookbrowser.ui.UpdateState
 import com.hupan.hookbrowser.ui.component.ConfirmDialog
 import com.hupan.hookbrowser.ui.component.DetailDialog
 import com.hupan.hookbrowser.ui.component.OptionDialog
+import com.hupan.hookbrowser.ui.component.UpdateDialog
 import com.hupan.hookbrowser.ui.navigation.LocalNavigator
 import com.hupan.hookbrowser.ui.navigation.Route
 import com.hupan.hookbrowser.ui.page.about.AboutPage
@@ -210,6 +213,13 @@ internal fun MainPage() {
                     confirmKey = null
                 },
                 onDismiss = { confirmKey = null },
+                bottomInset = dialogBottomInset,
+            )
+
+            // 更新浮层：关于页手动检查 / 打开应用自动检查的结果都从这里弹
+            UpdateDialog(
+                data = UpdateState.dialog,
+                onDismiss = { UpdateState.dismiss() },
                 bottomInset = dialogBottomInset,
             )
         }

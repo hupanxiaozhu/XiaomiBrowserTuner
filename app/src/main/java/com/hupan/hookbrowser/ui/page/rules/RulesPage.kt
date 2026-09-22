@@ -2,9 +2,10 @@
  * 「规则」Tab —— 自定义拦截规则。
  *
  * 页面结构（自上而下）：
- *   1. 规则库概况卡 —— 一眼确认「导入了什么、当前启用多少条」（关键状态放顶部，不用翻到底）；
- *   2. 两个开关：模块自己的规则引擎、接管宿主 native 引擎（后者是有副作用的，默认关）；
- *   3. 「规则管理」入口 —— 导入 / 启停 / 删除都在二级页 [RuleManagerPage] 里做，本页只放入口。
+ *   1. 规则库概况卡 —— 一眼确认「导入了什么、当前启用多少条 / 几个脚本」（关键状态放顶部）；
+ *   2. 三个开关：模块自己的规则引擎、接管宿主 native 引擎（有副作用，默认关）、
+ *      用户脚本（执行用户自选代码，默认关）；
+ *   3. 「规则管理」「脚本管理」入口 —— 导入 / 启停 / 删除都在二级页里做，本页只放入口。
  *
  * 概况怎么保持最新：规则库存在另一个 SP 组（adrules），改动只发生在规则管理页。
  * 1.11.0 靠 `ActivityResult` 回调重读（那时管理页是独立 Activity）；1.12.0 管理页变成
@@ -116,8 +117,14 @@ internal fun RulesPage(
                     )
                     EntryDivider()
                     NavEntryRow(
+                        title = "脚本管理",
+                        summary = "导入 .user.js，逐条启停与删除",
+                        onClick = { navigator.navigate(Route.ScriptManager) },
+                    )
+                    EntryDivider()
+                    NavEntryRow(
                         title = "刷新概况",
-                        summary = "重新读取规则库（从别处改动后点一下）",
+                        summary = "重新读取规则库与脚本库（从别处改动后点一下）",
                         onClick = { RuleLibraryState.bump() },
                     )
                 }
@@ -151,8 +158,9 @@ private fun RulesSummaryCard(summary: RuleSummary?) {
             Text(
                 text = when {
                     s == null -> "正在读取规则库…"
-                    s.empty -> "还没有导入规则"
-                    else -> "${s.sets} 个规则集 · 启用 ${s.enabledSets} 个"
+                    s.empty -> "还没有导入规则或脚本"
+                    else -> "规则集 ${s.sets} 个（启用 ${s.enabledSets}）· " +
+                        "脚本 ${s.scripts} 个（启用 ${s.enabledScripts}）"
                 },
                 fontSize = DsType.title,
                 fontWeight = FontWeight.SemiBold,
@@ -172,7 +180,7 @@ private fun RulesSummaryCard(summary: RuleSummary?) {
             )
         }
         StatusPill(
-            on = s != null && !s.empty && s.enabledSets > 0,
+            on = s != null && !s.empty && (s.enabledSets > 0 || s.enabledScripts > 0),
             onText = "生效中",
             offText = if (s == null || s.empty) "未导入" else "已停用",
         )
