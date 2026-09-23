@@ -19,6 +19,13 @@ android {
         // service 库要求 26（它用到 Android 8.0 起的 API）；模块本身不跑在低版本设备上
         minSdk = 26
         targetSdk = 34
+        // 1.15.4：APK 下载的商店版推广补齐 —— 弹窗内的「应用商店安装包」区块
+        // （tvStoreTitle / rlStore，含「官方检测 / 安全」标签）与
+        // guidecard.GuideCardManager 的「下载引导卡」（预取 + 贴底弹卡）一并收敛。
+        // （问题由酷安用户 @闲云野鹤悠游林 反馈，同上版）
+        // 1.15.3：「下载弹窗」不再拦 download.CommonDownloadDialogImpl#onCreateDialog
+        // （宿主对返回值不判空，返回 null = 普通文件下载必闪退；且弹窗是下载的确认入口）。
+        // 改为只拦弹窗内的推广：不请求小游戏推荐 + after 把推荐卡置 GONE；功能更名「下载推广」。
         // 1.15.2：修「主页快捷方式行数」放开上限后的两处界面问题 ——
         // ① 宿主的「更多」格在 onLayout 里被写死在位置 9，站点格超过 9 个就和它重叠；
         //    现在 onLayout 之后单独把「更多」格按真实 child 下标重排一次；
@@ -30,8 +37,8 @@ android {
         // 1.15.0：新增「主页快捷方式行数」（未发布，实现有误，内容并入 1.15.1）。
         // 1.14.0：新增「用户脚本」（油猴式 .user.js，复用 onPageFinished 注入通道），
         // 注入通道抽成共享件 webpage/PageInjection；其余功能与 hook 逻辑未动。
-        versionCode = 41
-        versionName = "1.15.2"
+        versionCode = 43
+        versionName = "1.15.4"
     }
 
     buildTypes {

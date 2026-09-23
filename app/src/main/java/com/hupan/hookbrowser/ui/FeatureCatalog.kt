@@ -141,15 +141,22 @@ internal val FUNCTION_TOGGLES = listOf(
     ),
     Toggle(
         key = Config.UI_DOWNLOAD,
-        title = "下载弹窗",
-        summary = "不建下载弹窗、不推应用、不跳市场",
+        title = "下载推广",
+        summary = "下载弹窗内推广与应用商店引导全部不出",
         default = Config.defaultOf(Config.UI_DOWNLOAD),
         detail = Detail(
-            purpose = "下载完成后的推广弹窗一律不出：不建弹窗、不推应用、不跳应用市场。",
-            target = "...download.CommonDownloadDialogImpl#{onCreateDialog, requestGameRecommend}；" +
+            purpose = "下载弹窗里的推广与商店引导全部不出：不请求「小游戏推荐」数据、" +
+                "不显示「应用商店安装包」区块、不弹「下载引导卡」、不跳应用市场。",
+            target = "...download.CommonDownloadDialogImpl#{requestGameRecommend, onCreateDialog}" +
+                "（后者在 after 隐藏 mGameRecommendCard / tvStoreTitle / rlStore）；" +
+                "...guidecard.GuideCardManager#{startGuideInfoRequest, tryShowCard}、" +
+                "...guidecard.GuideDownloadCardView#show；" +
                 "...DownloadHandler\$1#call",
-            effect = "既拦弹窗本身，也拦它的推荐请求，下载完成的提示保持干净。",
-            caveat = "下载功能本身不受影响，文件照常下载。",
+            effect = "下载弹窗只剩文件信息与「原安装包 / 下载」按钮；" +
+                "「识别到你可能在找的资源」那张贴底引导卡既不预取也不再弹出。",
+            caveat = "1.15.3 起**不再拦弹窗本身** —— 之前返回 null 会让宿主对返回值判空失败，" +
+                "下载任意非 APK 文件必闪退；而弹窗也是下载的确认入口，不建就等于下载不了。" +
+                "1.15.4 只做可见性收敛，按钮与下载流程一律不动。",
         ),
     ),
     Toggle(
@@ -426,8 +433,31 @@ private const val LEGACY_HELPERS = "Xposed" + "Helpers"
 
 internal val CHANGELOGS = listOf(
     Changelog(
-        version = "1.15.2",
+        version = "1.15.4",
         tag = "当前",
+        items = listOf(
+            "补齐 APK 下载时的商店版推广。APK 与普通文件下载共用同一个 download.CommonDownloadDialogImpl 弹窗（只有「带风险信息」才换成 WarnDownloadDialogImpl），它按 BaseDownloadDialogImpl#mDownloadFromMarket 二选一加载布局，两份布局里都有「应用商店安装包」标题 + 「官方检测 / 安全」标签 + 「原安装包」——这就是「APK 下载时冒出来的小米应用商店审核版本」",
+            "弹窗内的商店推广区（tvStoreTitle 标题、rlStore 容器）现在一并置 GONE。只改可见性、不动任何按钮，所以「原安装包 / 下载」入口照旧可用 —— 上次把整个弹窗拦掉的教训（那是下载的确认入口）不再重犯",
+            "新增拦掉第二条链路「下载引导卡」（guidecard.GuideCardManager）：它由 BrowserTab#setTab 创建，页面加载完成后预取该页「官方版应用」信息（请求里带 oaid / miuiVersion 等设备字段），预取回来直接弹一张贴屏幕底部的卡 —— 标题「识别到你可能在找的资源：」，底部文案「“安全守护”已提供应用商店上架版本」。现在 startGuideInfoRequest 不预取、不上报，tryShowCard 不弹卡，GuideDownloadCardView#show 再兜一道（前两条是 private 方法，show() 是 public void 无参）",
+            "为什么只挂这两处：startGuideInfoRequest 是所有预取请求的唯一出口（fetchGuideInfoOnPageFinished 与 prefetchGuideInfo 都调它），tryShowCard 是唯一的显示入口 —— 挂这两处连频控冷却那套逻辑都不必碰，也不会漏",
+            "顺带更正 1.15.3 注释里的一处误判：mDownloadFromMarket 在宿主 20.27 里**存在**，而且正是下载弹窗选布局的依据（base.apk 里那条针对它的处理不是失效残留）。本模块不去改它，只收敛可见性",
+            "感谢酷安用户 @闲云野鹤悠游林 反馈下载时的闪退与推广弹窗问题 —— 1.15.3 与 1.15.4 两版修复都源于他的反馈",
+        ),
+    ),
+    Changelog(
+        version = "1.15.3",
+        tag = "稳定版",
+        items = listOf(
+            "修「用浏览器打开下载链接直接闪退」：这是**普通文件下载必崩**，不是某个链接的问题。「下载弹窗」原本把 download.CommonDownloadDialogImpl#onCreateDialog 的返回值置成 null，而宿主拿到它之后不做判空就调 dialog.setCanceledOnTouchOutside(...)（往上一层 androidx DialogFragment 同样直接 setupDialog）→ 主线程 NPE。异常抛在 hook 回调之外，模块接不住",
+            "为什么只有部分链接崩：下载弹窗按条件三选一 —— 普通文件走 CommonDownloadDialogImpl（本模块有 hook，必崩）；APK 走 ApkDownloadDialogImpl、带风险信息走 WarnDownloadDialogImpl（模块从未碰过，正常）。平时下的多是 APK，所以直到下载一个 .zip 才撞上",
+            "顺带修掉一个更根上的问题：弹窗是下载的确认入口（真正发起下载由弹窗按钮触发），把它整条拦掉等于下载永远开始不了 —— 原来的功能说明「下载功能本身不受影响」并不成立",
+            "功能更名「下载弹窗」→「下载推广」（配置键 ui_download 不变，已有设置不受影响）：弹窗保留，只拦里面的推广 —— 不再请求「小游戏推荐」数据（方法返回 void，before 给结果即跳过），并在弹窗建好后兜底把那张推荐卡置 GONE",
+            "APK 下载的「不跳应用市场」（DownloadHandler\$1#call 返回 null）保持不变：宿主侧对 null 有判空分支 + try/catch，与上面那条 null 性质完全不同",
+        ),
+    ),
+    Changelog(
+        version = "1.15.2",
+        tag = "稳定版",
         items = listOf(
             "新增「主页快捷方式行数」：给简洁版主页的快捷方式网格设上限（最多 3 / 4 / 5 行），默认关闭。官方没有这项设置——简洁版主页写死了「站点格数不超过 9」，也就是 5 列下最多 2 行，再多只看得到「更多」",
             "hook 目标是 homepage.SimpleVersionHomePage#getShowSiteCount（返回网格实际铺几个站点格）。它覆写了父类 BrowserQuickLinksPage 的同名方法：父类是恒等返回，简洁版主页是 min(总数, 9)，而调用点走虚拟派发，只会落到子类那个重写上",

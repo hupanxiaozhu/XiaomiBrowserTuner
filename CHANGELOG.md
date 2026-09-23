@@ -1,5 +1,94 @@
 # Changelog
 
+## 1.15.4 (versionCode 43) —— 补齐 APK 下载的商店版推广
+
+### 修复
+
+- **下载 APK 时仍会看到「应用商店审核版本」与推广**。1.15.3 只处理了普通文件那条路（小游戏推荐卡），
+  漏了 APK 场景。宿主 20.27 的实际结构：
+
+  APK 与普通文件下载共用**同一个** `download.CommonDownloadDialogImpl` 弹窗
+  （`DownloadDialogFragment` 只在「带风险信息」时换成 `WarnDownloadDialogImpl`）。
+  它内部按 `BaseDownloadDialogImpl#mDownloadFromMarket` 二选一加载布局：
+
+  | `mDownloadFromMarket` | 布局 | 特征 |
+  |---|---|---|
+  | `true` | `download_dialog.xml` | 「应用商店安装包」标题 + 「官方检测 / 安全」标签 + 「原安装包」 |
+  | `false` | `download_dialog_normal.xml` | 同一套商店区（初始 `INVISIBLE`，有商店版时才显示）+ 小游戏推荐卡 |
+
+  两份布局都带商店区，只有显隐条件不同 —— 这就是「小米应用商店审核版本」的来源。
+
+- **第二条链路：下载引导卡**（`com.android.browser.guidecard`）。`BrowserTab#setTab` 时创建
+  `GuideCardManager`，页面加载完成后预取该页的「官方版应用」信息（请求里带 `oaid` /
+  `miuiVersion` 等设备字段），预取回来直接弹一张贴屏幕底部的卡：标题「识别到你可能在找的资源：」，
+  底部文案「“安全守护”已提供应用商店上架版本」。
+
+### 变更
+
+- `CommonDownloadDialogImpl#onCreateDialog` 的 after 兜底从「只关推荐卡」扩到
+  `mGameRecommendCard` + `tvStoreTitle` + `rlStore`（商店区标题与容器）。
+  **只改可见性，不动任何按钮** —— 「原安装包 / 下载」入口照旧可用。
+- 新增 `guidecard.GuideCardManager#{startGuideInfoRequest, tryShowCard}` 与
+  `guidecard.GuideDownloadCardView#show` 三处 hook：
+  前者是所有预取请求的唯一出口（`fetchGuideInfoOnPageFinished` 与 `prefetchGuideInfo` 都调它），
+  第二条是卡的唯一显示入口，第三条作兜底（前两条是 private 方法，`show()` 是 public void 无参）。
+  三条里任一条挂不上都不会漏 —— 效果是「不预取、不上报、不弹卡」。
+- 更正 1.15.3 注释里的一处误判：`mDownloadFromMarket` 在宿主 20.27 里**存在**，
+  而且正是下载弹窗选布局的依据（不是失效残留）。本模块不去改它，只收敛可见性。
+
+### 致谢
+
+- 感谢酷安用户 **@闲云野鹤悠游林** 反馈本问题（下载时的闪退与推广弹窗），
+  才有了 1.15.3 / 1.15.4 这两版的修复。
+
+## 1.15.3 (versionCode 42) —— 修「普通文件下载必闪退」；「下载弹窗」改为「下载推广」
+
+### 修复
+
+- **用浏览器打开下载链接（如各种 .zip）会直接闪退**，取消模块即正常。这不是某个链接的问题，
+  而是**普通文件下载必崩**。
+
+  「下载弹窗」开关（`ui_download`，默认开）里挂着一条
+  `download.CommonDownloadDialogImpl#onCreateDialog` 的 before hook，把返回值置成 `null`
+  （意图是「不建下载弹窗」）。而宿主对返回值**不判空**：
+
+  ```java
+  // com.android.browser.DownloadDialogFragment#onCreateDialog（20.27 反汇编）
+  Dialog v2 = downloadDialogInter.onCreateDialog(getArguments());   // ← 我们置 null
+  v2.setCanceledOnTouchOutside(true);                               // ← 无 if-eqz，直接 NPE
+  return v2;
+  ```
+
+  再往上一层 androidx `DialogFragment` 也是 `mDialog = onCreateDialog(...)` 之后立刻
+  `setupDialog(mDialog, style)`，同样不判空。而这个异常抛在 hook 回调**之外**，
+  模块自己的 try 接不住 —— 宿主当场闪退。
+
+- **为什么只有部分链接崩。** 下载确认弹窗按条件三选一：
+
+  | 条件 | 实际 impl | 本模块 | 结果 |
+  |---|---|---|---|
+  | `mAppData.riskInfo != null` | `WarnDownloadDialogImpl` | 不碰 | 正常 |
+  | APK 下载 | `ApkDownloadDialogImpl` | 不碰 | 正常 |
+  | 其余（**普通文件**，如 `.zip`） | `CommonDownloadDialogImpl` | **有 hook** | **闪退** |
+
+  平时下载的多是 APK，所以直到下载一个普通文件才撞上。
+
+- **顺带修掉一个更根上的问题**：弹窗是下载的**确认入口**（真正发起下载的 `onDownloadBtnClick()`
+  由弹窗按钮触发），把它整条拦掉等于下载永远开始不了 —— 原功能说明里那句「下载功能本身不受影响」
+  在这个实现下并不成立。
+
+### 变更
+
+- 功能更名 **「下载弹窗」→「下载推广」**（配置键 `ui_download` 不变，已有设置不受影响）：
+  弹窗保留，只拦里面的推广内容。
+  - `CommonDownloadDialogImpl#requestGameRecommend()`（方法返回 `void`）：before 阶段给结果即
+    跳过原实现 → 不再请求「小游戏推荐」数据，列表永远为空，推荐卡保持布局里的初始 `INVISIBLE`。
+  - `CommonDownloadDialogImpl#onCreateDialog` 改为挂 **after**：兜底把 `mGameRecommendCard`
+    置 `GONE`（只改可见性，不动宿主流程与返回值）；字段读不到就放弃，静默退化不影响下载。
+- APK 下载的「不跳应用市场」（`DownloadHandler$1#call()` 返回 null）**保持不变** ——
+  宿主侧对 null 有判空分支（`lambda$getAppUrlInSuperMarket$10` 里 `if-eqz` + try/catch），
+  与上面那条 null 的性质完全不同。
+
 ## 1.15.2 (versionCode 41) —— 主页快捷方式行数（含界面修复；1.15.0 / 1.15.1 未发布，内容并入本版）
 
 ### 新增

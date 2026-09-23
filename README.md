@@ -32,7 +32,7 @@
 
 - 包名：`com.hupan.hookbrowser`
 - 作用域：`com.android.browser`
-- 当前版本：**1.15.2**（versionCode 41）
+- 当前版本：**1.15.4**（versionCode 43）
 
 ---
 
@@ -50,7 +50,7 @@
 | 自定义规则 | **自定义拦截规则** | 导入 Adblock 语法规则：URL 拦截 + 元素隐藏 | ✅ 开 |
 | 自定义规则 | **接管宿主拦截引擎** | ⚠️ 用你的规则替换宿主 native 规则库 | ⬜ 关 |
 | 自定义规则 | **用户脚本** | ⚠️ 导入 .user.js，在匹配的网页里执行 JavaScript | ⬜ 关 |
-| 界面精简 | **下载弹窗** | 不建下载弹窗、不推应用、不跳市场 | ✅ 开 |
+| 界面精简 | **下载推广** | 下载弹窗内的推广与应用商店引导全部不出（弹窗本身保留） | ✅ 开 |
 | 界面精简 | **主页快捷方式行数** | 给简洁版主页的快捷方式设行数上限（最多 3 / 4 / 5 行） | ⬜ 关 |
 | 界面精简 | **UA 伪装** | 抹掉 UA 里的小米浏览器标识 | ✅ 开 |
 | 界面精简 | **默认搜索引擎** | 把必应 / Google / Yandex 内置进切换栏 | ✅ 开 |
@@ -229,6 +229,8 @@ hook 目标是对着宿主 **20.27.1010901** 逐个核对过的。小米浏览�
 
 | 版本 | 主题 |
 |---|---|
+| **1.15.4** | 补齐 APK 下载的商店版推广：APK 与普通文件共用 `CommonDownloadDialogImpl`，它按 `BaseDownloadDialogImpl#mDownloadFromMarket` 二选一加载 `download_dialog.xml` / `download_dialog_normal.xml`，两份布局都带「应用商店安装包 / 官方检测 / 原安装包」商店区 —— 现在连同标题一起置 `GONE`（只改可见性，按钮不动）。另拦掉 `guidecard.GuideCardManager` 的「下载引导卡」：不预取商店版应用信息、不弹那张「识别到你可能在找的资源」贴底卡。（问题由酷安用户 **@闲云野鹤悠游林** 反馈） |
+| **1.15.3** | 修「用浏览器打开下载链接直接闪退」：那是**普通文件下载必崩** —— 原「下载弹窗」把 `CommonDownloadDialogImpl#onCreateDialog` 的返回值置成 null，而宿主拿到后不判空就 `dialog.setCanceledOnTouchOutside(...)`（androidx `DialogFragment` 同样直接 `setupDialog`）→ 主线程 NPE。现改为**不再拦弹窗本身**，只拦弹窗里的推广（不请求小游戏推荐 + after 把推荐卡置 `GONE`）；功能更名「下载推广」 |
 | **1.15.2** | 新增「主页快捷方式行数」：给简洁版主页的快捷方式网格设上限（最多 3 / 4 / 5 行）。hook 目标是 `homepage.SimpleVersionHomePage#getShowSiteCount`（父类同名方法是恒等实现，虚拟派发不会走到）；另修「更多」格被宿主的 `onLayout` 写死在位置 9 导致的重叠，以及「母开关卡 + 下拉行」零间距连成一片 |
 | **1.14.0** | 新增「用户脚本」（油猴式 .user.js，复用注入通道）+ 注入通道抽共享件 PageInjection |
 | **1.13.0** | 新增「检查更新」：关于页手动 + 打开应用自动（24h 节流），GitHub Releases，零新增依赖 |
@@ -265,7 +267,8 @@ hook 目标是对着宿主 **20.27.1010901** 逐个核对过的。小米浏览�
 | UA 3 个方法 | ✅ 全在 |
 | `BrowserSettings` 调试/广告系列 | ✅ 全在（该类 362 个方法） |
 | `Tab$GetSecurityFlagAsyncTask`、`DownloadHandler$1#call` | ✅ 在 |
-| `CommonDownloadDialogImpl#{onCreateDialog, requestGameRecommend}` | ✅ 在 |
+| `CommonDownloadDialogImpl#{onCreateDialog, requestGameRecommend}` | ✅ 在（⚠ 1.15.3 起 `onCreateDialog` 只挂 after 改推广控件可见性，**不再改返回值** —— 宿主不判空，置 null 会让普通文件下载闪退） |
+| `guidecard.GuideCardManager#{startGuideInfoRequest, tryShowCard}`、`guidecard.GuideDownloadCardView#show` | ✅ 在（1.15.4；`GuideCardManager` 在 classes.dex，`GuideDownloadCardView` 在 classes7.dex，卡的布局是 `layout_guide_download_card`；前两条是 private 方法，`show()` 是 public void 无参，作兜底） |
 | `SugCardData#a` | ✅ 在（原版 base.apk 的搜索 hook，⚠ 1.6.0 复核判定**与广告无关**） |
 | `RecentAppManager#{initRecentAppList, getRecentAppList}` | ✅ 在（但三个列表长度恒 0，与卡片无关） |
 | `SearchSugManager#mWebView` / `#initSugWebView` / `#querySug` | ✅ 在（**1.6.1 主拦点**：反射取 `mWebView` + 注入 JS） |
@@ -391,7 +394,7 @@ XiaomiBrowserTuner/
 | `ad_custom_rules` | 自定义拦截规则 | **导入自己的过滤规则**（Adblock 语法），挂在 `hyper.webkit.WebViewClient#shouldInterceptRequest` 上：再加 `BrowserWebView#setWebViewClient` / `hyper.WebView#setWebViewClient` 动态捕获每个 client 类 + 基类兜底。详见「自定义拦截规则」一节 | 开（规则库为空时引擎是 no-op） |
 | `ad_host_override` | 接管宿主拦截引擎 | **不再只是模块自己拦**：hook 宿主的规则写入通道（`AdBlockHelper$Updator#updateRuleList`、`AdBlockDataUpdator#{writeJSONFile, updateAdBlackist, update}`），把 `files/data/adblock/miui_blacklist.json` 换成导入的规则、清空它的白名单，再调 `MiuiStatics#notifyAdBlockUpdateConfig()` 让 native 立即重载。详见「接管宿主拦截引擎」一节 | **关**（唯一会改宿主自身数据的开关；关闭即从备份还原） |
 | `misc_host_ad` | 宿主广告开关 | `...BrowserSettings#{isShowAd, isPersonalizedAdEnabled, isAdCustomDisabled}` | 开 |
-| `ui_download` | 下载弹窗 | `...download.CommonDownloadDialogImpl#{onCreateDialog, requestGameRecommend}`、`...DownloadHandler$1#call` | 开 |
+| `ui_download` | 下载推广 | ① `...download.CommonDownloadDialogImpl#requestGameRecommend`（before 跳过，不请求小游戏推荐数据）② `...download.CommonDownloadDialogImpl#onCreateDialog`（**after**，把 `mGameRecommendCard` / `tvStoreTitle` / `rlStore` 置 `GONE`；1.15.4 起含商店区）③ `...guidecard.GuideCardManager#startGuideInfoRequest`（before 跳过，不预取商店版应用信息）④ `...guidecard.GuideCardManager#tryShowCard`（before 跳过，不弹「下载引导卡」）⑤ `...guidecard.GuideDownloadCardView#show`（before 跳过，public void 无参的兜底）⑥ `...DownloadHandler$1#call`（返回 null，APK 下载不跳应用市场；宿主侧有判空 + try/catch）。⚠️ 1.15.3 起**不再拦 `onCreateDialog` 本身**：宿主对返回值不判空，置 null 会让普通文件下载直接闪退，且弹窗是下载的确认入口 | 开 |
 | `ui_quicklink_rows` | 主页快捷方式行数 | `com.android.browser.homepage.SimpleVersionHomePage#getShowSiteCount`（简洁版主页覆写了父类 `BrowserQuickLinksPage#getShowSiteCount`，宿主原生是 `min(总数, 9)`）→ 按 `行数 × QuickLinksPanel#mNumsPerRow − 1` 截断，末行第一格留给「更多」；另 hook `QuickLinksPanel#onLayout` 把「更多」格从写死的位置 9 改回网格末尾 | **关**（下拉可选最多 3 / 4 / 5 行，默认最多 4 行）|
 | `ua_patch` | UA 伪装 | `...util.WebViewSettingConfig#{getDefaultUserAgent, getUserAgentStringWithoutSwan, getMiuiBrowserUseragentSuffix}` | 开 |
 | `ui_search_engine` | 默认搜索引擎 / 切换栏接管 | **注入引擎数据（不改任何 URL 出口）**：hook `...search.SearchEngineDataProvider#{initEngineSet, getSearchEngines, isCustomEngine, getItemTitle, getCurrentEngineTitle}`、`...search.interaction.settings.SearchModuleKVPrefs#isCustomSearchEngineDisplay`、`...search.SearchEngineInfo#getLabel`、`...toolbar.EngineTabsConfig#getAllSearchEngines`、`...toolbar.EngineTabsManager#buildDefaultFixedOrderList`、`...fullsearch.FullSearchActivity#buildSearchUrl`（仅模块引擎） | **开**（下拉可选 bing / google / yandex / baidu，默认 bing） |

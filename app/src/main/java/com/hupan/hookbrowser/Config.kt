@@ -81,6 +81,12 @@ internal object Config {
         // 站点），关掉不影响错误提示、重试 / 回首页 / 网络检查 / 网页诊断等按钮，也不影响
         // 「搜索发现」「猜你想搜」两条真正的搜索建议。
         AD_ERROR_PAGE_HOT to true,
+        // 1.15.4：下载推广（补 APK 场景）。在 1.15.3 基础上多收两处 ——
+        // 弹窗里的商店区（tvStoreTitle / rlStore，两份布局 download_dialog*.xml 都带）
+        // 与 guidecard.GuideCardManager 的「下载引导卡」（不预取、不弹卡）。
+        // 1.15.3：只拦弹窗**内的推广**（不请求小游戏推荐 + 把推荐卡置 GONE）与 APK 下载的
+        // 「跳应用市场」；**不拦弹窗本身**：宿主对 onCreateDialog 的返回值不判空，
+        // 置 null 会让普通文件下载直接闪退，而且弹窗是下载的确认入口。
         UI_DOWNLOAD to true,
         UA_PATCH to true,
         MISC_HOST_AD to true,
