@@ -74,6 +74,10 @@ internal val CAPSULE_TAG_SHAPE = RoundedCornerShape(percent = 50)
  * `onCheckedChange(!checked)`，1.9.4 起那套就是自绘的。）
  *
  * <p>[emphasized] 用于总开关：主色 12% 底 + 更大的标题，与普通功能卡拉开层级。
+ *
+ * <p>[flat] 用于「卡片组」：本卡后面还跟着自己的下拉行时，背景与圆角交给外层的
+ * [EntryGroup] 统一画，本卡只出内容 —— 否则两张同色圆角卡零间距贴在一起，
+ * 圆角处会连成一片，看着像两条内容挤在同一张卡里（1.15.2 修）。
  */
 @Composable
 internal fun ToggleCard(
@@ -84,14 +88,18 @@ internal fun ToggleCard(
     onCheckedChange: (Boolean) -> Unit,
     onShowDetail: () -> Unit,
     emphasized: Boolean = false,
+    flat: Boolean = false,
 ) {
     val scheme = MiuixTheme.colorScheme
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                color = if (emphasized) accentSoft() else scheme.surfaceContainer,
-                shape = RoundedCornerShape(DsRadius.card),
+            .then(
+                if (flat) Modifier
+                else Modifier.background(
+                    color = if (emphasized) accentSoft() else scheme.surfaceContainer,
+                    shape = RoundedCornerShape(DsRadius.card),
+                )
             )
             .clickable(enabled = enabled, onClick = onShowDetail)
             .padding(horizontal = DsSpace.cardPadH, vertical = DsSpace.cardPadV),
@@ -129,6 +137,9 @@ internal fun ToggleCard(
  * 下拉项卡片行（UA 模式 / 搜索引擎）：标题 + 当前值 + 箭头，整行点击弹单选浮层。
  *
  * <p>[enabled] 为假时整行置灰且不可点 —— 母开关关着时改它没有意义。
+ *
+ * <p>[flat] 同 [ToggleCard]：作为卡片组的第二行时不自己画背景，
+ * 由外层 [EntryGroup] + [EntryDivider] 统一成「一张卡 + 中间一条细线」。
  */
 @Composable
 internal fun OptionRow(
@@ -136,12 +147,16 @@ internal fun OptionRow(
     value: String,
     enabled: Boolean,
     onClick: () -> Unit,
+    flat: Boolean = false,
 ) {
     val scheme = MiuixTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(scheme.surfaceContainer, RoundedCornerShape(DsRadius.card))
+            .then(
+                if (flat) Modifier
+                else Modifier.background(scheme.surfaceContainer, RoundedCornerShape(DsRadius.card))
+            )
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = DsSpace.cardPadH, vertical = DsSpace.cardPadV),
         verticalAlignment = Alignment.CenterVertically,

@@ -1,5 +1,73 @@
 # Changelog
 
+## 1.15.2 (versionCode 41) —— 主页快捷方式行数（含界面修复；1.15.0 / 1.15.1 未发布，内容并入本版）
+
+### 新增
+
+- **「主页快捷方式行数」**：给简洁版主页的快捷方式网格设一个行数上限，可选最多 3 / 4 / 5 行，
+  默认关闭。官方没有这项设置 —— 简洁版主页写死了「站点格数不超过 9」，也就是 5 列下最多 2 行，
+  再多只剩一个「更多」入口。
+
+### 实现（对着宿主 20.27 反汇编核对过）
+
+- **hook 目标是 `homepage.SimpleVersionHomePage#getShowSiteCount(int)`**，它返回主页网格实际铺几个
+  站点格。`getShowSiteCount` 在宿主里有**两个**实现：
+  - `BrowserQuickLinksPage`（父类）：`return v1`，**恒等**，入参原样返回；
+  - `homepage.SimpleVersionHomePage`（子类，`extends BrowserQuickLinksPage`）：`min(总数, 9)`，
+    那个 9 是父类静态常量 `SIMPLE_HOME_MAX_SITE_COUNT`，被**内联**进子类字节码。
+
+  调用点写的是 `invoke-virtual {this$0, total}, BrowserQuickLinksPage.getShowSiteCount:(I)I`，
+  运行时**虚拟派发只会落到子类重写**；而全 APK 里没有任何地方直接 `new` 父类
+  （也没有第二个子类），所以 hook 父类等于什么都没挂。父类那一处仍作兜底保留。
+- **上限 = 行数 × 每行个数 − 1**，不是 −0：网格总格数 = 站点格数 + 1 个「更多」/「+」格，
+  宿主自己的默认值就是 `9 = 2 行 × 5 − 1`（末行第一格留给「更多」）。每行几个读网格自己的
+  `mNumsPerRow`（手机 5 列，读不到时按 5 兜底）。
+- **开关打开时无条件接管返回值**：宿主自己的 `min(总数, 9)` 在「9 到上限之间」这一段同样生效，
+  只在越界时才改等于没改。
+- **多出来的站点不删不丢**：宿主自己算 `mMoreSiteCount = 总数 − 显示数`，归进「更多」入口。
+
+### 1.15.2 修的界面问题
+
+- **主页第 2 行末格图标 / 文字叠在一起** —— 宿主的 `QuickLinksPanel#onLayout` 对「更多」格有硬编码位置：
+
+  ```
+  pos = (child == mShowMoreQuickLink && isInSimpleHome()) ? 9 : i
+  ```
+
+  那个 9 = `SIMPLE_HOME_MAX_SITE_COUNT − 1`，同样是**内联常量**。宿主的假设是「简洁版主页最多 9 个
+  站点格（位置 0~8），第 10 格留给『更多』」，所以 `显示数 ≤ 9` 时位置正好；一旦放开到 24，
+  第 10 个站点格和「更多」格**同时**落在位置 9 → 视觉上糊成一团，网格末尾还空一格。
+  现在在 `onLayout` 之后把「更多」格单独按它真实的 child 下标重排一次（公式照抄宿主，读
+  `mNumsPerRow` / `mSpacingBetweenItemH` / `mSpacingBetweenItemV` / `mSpacingMarginItem` /
+  `mSpacingMarginTopInit` / `mIsLayoutRtl`），它就回到网格末尾。原生场景算出来和宿主一致，天然幂等。
+
+- **「母开关卡 + 它的下拉行」看着挤成一张卡** —— 两者原先各自画同色圆角背景、间距为 0，
+  圆角处连成一片。改为一张卡片组（`EntryGroup` + `EntryDivider`，组内一条细分割线），
+  与其它卡片一样留出组间距。涉及「User-Agent 伪装 + UA 伪装模式」「默认搜索引擎 + 选择引擎」
+  「主页快捷方式行数 + 行数」三组。
+
+### 顺带查清的几件事（宿主 20.27）
+
+- 主页网格是**自绘**的 `BrowserQuickLinksPage$QuickLinksPanel`（不是 RecyclerView）；
+  尊享版那套 `homepage/quicklinkbox/QuickLinksViewGroup` 才走 RecyclerView + GridLayoutManager
+  （手机 5 列 / 大屏 7 列）。
+- 数据源 `QuickLinksDataProvider#getSites()` 全量返回，没有 SQL limit，`manageSitesData` 只做过滤
+  （简洁版剔除 `mibrowser://video`）。
+- 容器 `QuickLinkScrollView` 用 `mMaxHeight`（屏幕可用高 − 底栏 − 71dp）做 AT_MOST 限制，
+  屏幕够高时放得下 4~5 行 —— **高度不是瓶颈，不用动**。
+
+### 未改动
+
+功能开关表其余项、hook 逻辑、规则引擎与注入通道全部未动。
+
+### ⚠ 已知语义
+
+这是**上限不是补齐**：快捷方式不足 N 行时只显示自然行数，不补空格子
+（也不能补 —— 宿主的铺格子循环是 `for (i in 0 until show) sites[i - offset]`，
+返回比总数大的值会越界崩主页）。想真的排到 4 / 5 行，得先有那么多快捷方式。
+
+---
+
 ## 1.14.0 (versionCode 38) —— 用户脚本
 
 ### 改了什么

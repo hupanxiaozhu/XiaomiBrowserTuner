@@ -24,6 +24,7 @@ package com.hupan.hookbrowser.ui
 import android.content.Context
 
 import com.hupan.hookbrowser.Config
+import com.hupan.hookbrowser.features.QuickLinkRows
 import com.hupan.hookbrowser.features.SearchEngines
 import com.hupan.hookbrowser.features.UaBuilder
 
@@ -181,6 +182,29 @@ internal val FUNCTION_TOGGLES = listOf(
         ),
     ),
     Toggle(
+        key = Config.UI_QUICKLINK_ROWS,
+        title = "主页快捷方式行数",
+        summary = "给简洁版主页的快捷方式设行数上限",
+        default = Config.defaultOf(Config.UI_QUICKLINK_ROWS),
+        detail = Detail(
+            purpose = "给简洁版主页的快捷方式网格设一个行数上限（3 / 4 / 5 行）。" +
+                "官方没有这项设置：简洁版主页写死了「站点格数 ≤ 9」，也就是最多 2 行（5 列）" +
+                "再多就只剩一个「更多」入口。",
+            target = "com.android.browser.homepage.SimpleVersionHomePage#getShowSiteCount(int) —— " +
+                "它返回网格实际铺几个站点格，20.27 上是 min(总数, 9)（那个 9 是父类静态常量 " +
+                "SIMPLE_HOME_MAX_SITE_COUNT，被内联进字节码）。每行几个取网格自己的 " +
+                "mNumsPerRow（手机 5 列，读不到时按 5 算）。" +
+                "另外还有一处 BrowserQuickLinksPage\$QuickLinksPanel#onLayout：宿主把「更多」格的位置" +
+                "写死成 9（原生假设站点格不超过 9 个、第 10 格留给它），放开上限后它会和站点格撞在同一格上，" +
+                "所以布局结束后要把「更多」格单独按真实下标重排一次。",
+            effect = "按「行数 × 每行个数 − 1」截断（末行第一格留给「更多」）：站点多于上限时，" +
+                "多出来的自动归进宿主的「更多」入口，不丢也不删数据。",
+            caveat = "这是上限不是补齐 —— 快捷方式不足 N 行时只显示自然行数，不会补空格子。" +
+                "想真的排到 4 / 5 行，得先有那么多快捷方式（长按主页或走「更多」添加）；" +
+                "编辑 / 拖动排序时格子变多的布局表现以真机为准。",
+        ),
+    ),
+    Toggle(
         key = Config.AD_CUSTOM_RULES,
         title = "自定义拦截规则",
         summary = "按导入的规则过滤：URL 拦截 + 元素隐藏",
@@ -284,9 +308,14 @@ internal val AD_TOGGLES = FUNCTION_TOGGLES.filter {
     )
 }
 
-/** 分区：界面精简（UA 与搜索引擎两项各自带一条下拉）。 */
+/** 分区：界面精简（UA / 搜索引擎 / 快捷方式行数三项各自带一条下拉）。 */
 internal val UI_TOGGLES = FUNCTION_TOGGLES.filter {
-    it.key in setOf(Config.UI_DOWNLOAD, Config.UA_PATCH, Config.UI_SEARCH_ENGINE)
+    it.key in setOf(
+        Config.UI_DOWNLOAD,
+        Config.UI_QUICKLINK_ROWS,
+        Config.UA_PATCH,
+        Config.UI_SEARCH_ENGINE,
+    )
 }
 
 /** 「规则」Tab：自定义规则、宿主引擎接管与用户脚本。 */
@@ -346,6 +375,18 @@ internal val SEARCH_ENGINE_OPTIONS = listOf(
 )
 
 /**
+ * 主页快捷方式行数的可选项（key 与 [QuickLinkRows] 的常量一致）。
+ *
+ * 文案只写「最多 N 行」，不折算站点个数：每行几个是宿主网格的 `mNumsPerRow`
+ * （手机 5 列、大屏 7 列），写死个数迟早对不上。
+ */
+internal val QUICKLINK_ROWS_OPTIONS = listOf(
+    OptionItem(QuickLinkRows.ROWS_3, "最多 3 行"),
+    OptionItem(QuickLinkRows.ROWS_4, "最多 4 行"),
+    OptionItem(QuickLinkRows.ROWS_5, "最多 5 行"),
+)
+
+/**
  * 总开关不在 [FUNCTION_TOGGLES] 里（位置与联动规则都不同），详情单独放。
  */
 internal val MASTER_DETAIL = Detail(
@@ -385,8 +426,21 @@ private const val LEGACY_HELPERS = "Xposed" + "Helpers"
 
 internal val CHANGELOGS = listOf(
     Changelog(
-        version = "1.14.0",
+        version = "1.15.2",
         tag = "当前",
+        items = listOf(
+            "新增「主页快捷方式行数」：给简洁版主页的快捷方式网格设上限（最多 3 / 4 / 5 行），默认关闭。官方没有这项设置——简洁版主页写死了「站点格数不超过 9」，也就是 5 列下最多 2 行，再多只看得到「更多」",
+            "hook 目标是 homepage.SimpleVersionHomePage#getShowSiteCount（返回网格实际铺几个站点格）。它覆写了父类 BrowserQuickLinksPage 的同名方法：父类是恒等返回，简洁版主页是 min(总数, 9)，而调用点走虚拟派发，只会落到子类那个重写上",
+            "上限按「行数 × 每行个数 − 1」算（末行第一格留给「更多」，宿主自己的默认值 9 就是 2 行 × 5 − 1）；每行几个读宿主网格自己的 mNumsPerRow，读不到时按实测 5 列兜底。多出来的站点归「更多」，不删不丢",
+            "开关打开时无条件接管返回值——宿主原本的 min(总数, 9) 在「9 到上限之间」这一段同样会生效，只在越界时才改等于没改",
+            "修「行数放开后第 2 行末格图标文字叠在一起」：宿主 onLayout 把「更多」格的位置写死成 9（原生假设「站点格不超过 9 个」，第 10 格留给它），站点格一超过 9 个就撞在同一格上。现在 onLayout 之后单独把「更多」格按它真实的 child 下标重排一次，回到网格末尾",
+            "修「母开关卡与它的下拉行看着挤成一张卡」：两者原先各自画同色圆角背景且零间距，圆角处连成一片。改为一张卡片组（组内一条细分割线），与其它卡片一样留出组间距",
+            "这是上限不是补齐：站点不足 N 行时就是自然行数，不补空格子（补会撞宿主的铺格子循环越界）。其余功能开关、配置键、规则引擎与注入通道全部未改动",
+        ),
+    ),
+    Changelog(
+        version = "1.14.0",
+        tag = "稳定版",
         items = listOf(
             "新增「用户脚本」：导入油猴式 .user.js，按 @match / @include 匹配页面，页面加载完成后注入执行——自动展开、去跳转中间页这类 CSS 做不到的事终于能做。脚本管理并入「规则」Tab",
             "注入通道抽成共享件（webpage/PageInjection）：自定义规则的元素隐藏 CSS 与用户脚本共用同一条 onPageFinished → evaluateJavascript 链路，捕获逻辑单例化，不再各自挂一遍",

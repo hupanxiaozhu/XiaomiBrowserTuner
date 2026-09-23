@@ -1,6 +1,7 @@
 package com.hupan.hookbrowser
 
 import android.content.SharedPreferences
+import com.hupan.hookbrowser.features.QuickLinkRows
 import io.github.libxposed.api.XposedInterface
 import java.util.concurrent.ConcurrentHashMap
 
@@ -64,6 +65,12 @@ internal object Config {
     const val UI_SEARCH_ENGINE = "ui_search_engine"
     const val SEARCH_ENGINE_TARGET = "ui_search_engine_target"
 
+    /** 1.15.0：简洁版主页「快捷方式」最多几行（主开关，默认关 = 完全不干预宿主的排布） */
+    const val UI_QUICKLINK_ROWS = "ui_quicklink_rows"
+
+    /** 1.15.0：上面那个开关的行数取值（"3" / "4" / "5"，见 features/QuickLinkRows） */
+    const val UI_QUICKLINK_ROWS_VALUE = "ui_quicklink_rows_value"
+
     /** 默认值表：与 ui/FeatureCatalog.kt 的 `Toggle.default` 同源（界面读 [defaultOf]） */
     private val DEFAULTS = linkedMapOf(
         MASTER to true,
@@ -89,6 +96,9 @@ internal object Config {
         SCRIPT_USERSCRIPTS to false,
         // 1.7.0：用户明确要求「常用引擎内置、无需在模块里手动开」→ 装上即生效（默认引擎 bing）
         UI_SEARCH_ENGINE to true,
+        // 1.15.0：主页快捷方式行数。默认关 —— 关着时一个 hook 都不生效，宿主怎么排就怎么排，
+        // 只有用户主动开（并选了行数）才接管。
+        UI_QUICKLINK_ROWS to false,
         MISC_UNLOCK_PREF to false,
         MISC_DEBUG to false,
         MISC_SECURITY to false
@@ -257,6 +267,18 @@ internal object Config {
     /** 目标搜索引擎 key（bing/google/yandex/baidu）；没写入或值非法时回退默认 */
     fun searchEngineTarget(): String =
         (raw(SEARCH_ENGINE_TARGET) as? String)?.takeIf { it.isNotBlank() } ?: SEARCH_ENGINE_DEFAULT
+
+    /**
+     * 主页快捷方式的行数上限（1.15.0）。
+     *
+     * 返回 0 表示「不限制」：开关关着、或值读不出来时都是 0，宿主维持自己的排布。
+     * 读不到配置不会放宽行为 —— 这里宁可不管，也不猜一个行数去截断。
+     */
+    fun quickLinkRows(): Int {
+        if (!on(UI_QUICKLINK_ROWS)) return 0
+        val v = (raw(UI_QUICKLINK_ROWS_VALUE) as? String)?.trim().orEmpty()
+        return v.toIntOrNull()?.takeIf { it > 0 } ?: QuickLinkRows.DEFAULT.toIntOrNull() ?: 0
+    }
 
     /** 供设置页首次运行时铺默认值，保证模块进程与宿主进程看到同一套值 */
     fun defaultEntries(): Map<String, Boolean> = DEFAULTS

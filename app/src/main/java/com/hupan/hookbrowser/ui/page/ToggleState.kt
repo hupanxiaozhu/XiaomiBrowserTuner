@@ -16,6 +16,7 @@ package com.hupan.hookbrowser.ui.page
 import android.content.Context
 import androidx.compose.runtime.mutableStateMapOf
 import com.hupan.hookbrowser.Config
+import com.hupan.hookbrowser.features.QuickLinkRows
 import com.hupan.hookbrowser.features.SearchEngines
 import com.hupan.hookbrowser.features.UaBuilder
 import com.hupan.hookbrowser.ui.FUNCTION_TOGGLES
@@ -85,5 +86,7 @@ internal object ToggleState {
         strings[Config.UA_MODE] = store.getString(Config.UA_MODE, UaBuilder.MODE_CHROME)
         strings[Config.SEARCH_ENGINE_TARGET] =
             store.getString(Config.SEARCH_ENGINE_TARGET, SearchEngines.DEFAULT)
+        strings[Config.UI_QUICKLINK_ROWS_VALUE] =
+            store.getString(Config.UI_QUICKLINK_ROWS_VALUE, QuickLinkRows.DEFAULT)
     }
 }

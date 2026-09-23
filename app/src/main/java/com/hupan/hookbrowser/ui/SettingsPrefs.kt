@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.hupan.hookbrowser.Config
 import com.hupan.hookbrowser.ModuleService
+import com.hupan.hookbrowser.features.QuickLinkRows
 import com.hupan.hookbrowser.features.SearchEngines
 import com.hupan.hookbrowser.features.UaBuilder
 
@@ -61,6 +62,7 @@ internal class SettingsPrefs(context: Context) {
             Config.defaultEntries().forEach { (key, value) -> putBoolean(key, value) }
             putString(Config.UA_MODE, UaBuilder.MODE_CHROME)
             putString(Config.SEARCH_ENGINE_TARGET, SearchEngines.DEFAULT)
+            putString(Config.UI_QUICKLINK_ROWS_VALUE, QuickLinkRows.DEFAULT)
         }.apply()
         push()
     }

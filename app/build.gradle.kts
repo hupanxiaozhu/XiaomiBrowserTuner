@@ -19,10 +19,19 @@ android {
         // service 库要求 26（它用到 Android 8.0 起的 API）；模块本身不跑在低版本设备上
         minSdk = 26
         targetSdk = 34
+        // 1.15.2：修「主页快捷方式行数」放开上限后的两处界面问题 ——
+        // ① 宿主的「更多」格在 onLayout 里被写死在位置 9，站点格超过 9 个就和它重叠；
+        //    现在 onLayout 之后单独把「更多」格按真实 child 下标重排一次；
+        // ② 「母开关卡 + 下拉行」原先各自画圆角背景且零间距，视觉上连成一片，
+        //    改为一张卡片组（EntryGroup + EntryDivider）。
+        // 1.15.1：修「主页快捷方式行数」——hook 目标改到真正生效的
+        // homepage.SimpleVersionHomePage#getShowSiteCount（父类那个是恒等实现，虚拟派发不会走到），
+        // 且开关打开时无条件接管返回值；上限改成「行数 × 每行个数 − 1」（末行第一格留给「更多」）。
+        // 1.15.0：新增「主页快捷方式行数」（未发布，实现有误，内容并入 1.15.1）。
         // 1.14.0：新增「用户脚本」（油猴式 .user.js，复用 onPageFinished 注入通道），
         // 注入通道抽成共享件 webpage/PageInjection；其余功能与 hook 逻辑未动。
-        versionCode = 38
-        versionName = "1.14.0"
+        versionCode = 41
+        versionName = "1.15.2"
     }
 
     buildTypes {

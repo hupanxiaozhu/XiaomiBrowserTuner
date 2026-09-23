@@ -95,10 +95,11 @@ cfg_map = dict(re.findall(r'const val (\w+) = "([^"]+)"', cfg))
 
 # 开关 key = 全大写常量，排除包名 / SP 文件名这类非开关常量。
 # 下面三类不在布尔目录里，各自有单独的载体：
-#   UA_MODE / SEARCH_ENGINE_TARGET —— 字符串开关，由 ui/FeatureCatalog.kt 的选项表驱动；
+#   UA_MODE / SEARCH_ENGINE_TARGET / UI_QUICKLINK_ROWS_VALUE —— 字符串开关，
+#   由 ui/FeatureCatalog.kt 的选项表驱动（母开关进布尔目录，值本身不进）；
 #   MASTER —— 总闸，界面上是 hero 卡（详情为 MASTER_DETAIL），不进 FUNCTION_TOGGLES。
 NON_SWITCH = ('MODULE_PKG', 'PREFS_NAME')
-EXTRA_KEYS = ('UA_MODE', 'SEARCH_ENGINE_TARGET', 'MASTER')
+EXTRA_KEYS = ('UA_MODE', 'SEARCH_ENGINE_TARGET', 'UI_QUICKLINK_ROWS_VALUE', 'MASTER')
 switch_keys = {v for k, v in cfg_map.items()
                if k.isupper() and k not in NON_SWITCH
                and k not in EXTRA_KEYS and not k.endswith('_DEFAULT')}
@@ -156,6 +157,8 @@ _opt_pairs = (
     ('UA_OPTIONS', os.path.join(PKG_DIR, 'features', 'UaFeature.kt'), r'const val MODE_\w+'),
     ('SEARCH_ENGINE_OPTIONS', os.path.join(PKG_DIR, 'features', 'SearchEngineFeature.kt'),
      r'const val (?:BING|GOOGLE|YANDEX|BAIDU)\b'),
+    ('QUICKLINK_ROWS_OPTIONS', os.path.join(PKG_DIR, 'features', 'HomeQuickLinkRowsFeature.kt'),
+     r'const val ROWS_\w+'),
 )
 for _name, _path, _pat in _opt_pairs:
     _block = re.search(r'internal val %s = listOf\((.*?)\n\)' % _name, cat, re.S)
@@ -164,7 +167,7 @@ for _name, _path, _pat in _opt_pairs:
         continue
     _src = open(_path, encoding='utf-8').read()
     _consts = set(re.findall(r'const val (\w+) = "', _src))
-    for _ref in re.findall(r'(?:UaBuilder|SearchEngines)\.(\w+)', _block.group(1)):
+    for _ref in re.findall(r'(?:UaBuilder|SearchEngines|QuickLinkRows)\.(\w+)', _block.group(1)):
         if _ref not in _consts:
             problems.append('选项表 %s 引用了不存在的常量 %s' % (_name, _ref))
 

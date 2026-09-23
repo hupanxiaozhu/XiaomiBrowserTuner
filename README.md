@@ -32,7 +32,7 @@
 
 - 包名：`com.hupan.hookbrowser`
 - 作用域：`com.android.browser`
-- 当前版本：**1.14.0**（versionCode 38）
+- 当前版本：**1.15.2**（versionCode 41）
 
 ---
 
@@ -51,6 +51,7 @@
 | 自定义规则 | **接管宿主拦截引擎** | ⚠️ 用你的规则替换宿主 native 规则库 | ⬜ 关 |
 | 自定义规则 | **用户脚本** | ⚠️ 导入 .user.js，在匹配的网页里执行 JavaScript | ⬜ 关 |
 | 界面精简 | **下载弹窗** | 不建下载弹窗、不推应用、不跳市场 | ✅ 开 |
+| 界面精简 | **主页快捷方式行数** | 给简洁版主页的快捷方式设行数上限（最多 3 / 4 / 5 行） | ⬜ 关 |
 | 界面精简 | **UA 伪装** | 抹掉 UA 里的小米浏览器标识 | ✅ 开 |
 | 界面精简 | **默认搜索引擎** | 把必应 / Google / Yandex 内置进切换栏 | ✅ 开 |
 | 界面精简 | **解锁隐藏设置项** | ⚠️ 强制放出宿主设置页的隐藏项 | ⬜ 关 |
@@ -228,6 +229,7 @@ hook 目标是对着宿主 **20.27.1010901** 逐个核对过的。小米浏览�
 
 | 版本 | 主题 |
 |---|---|
+| **1.15.2** | 新增「主页快捷方式行数」：给简洁版主页的快捷方式网格设上限（最多 3 / 4 / 5 行）。hook 目标是 `homepage.SimpleVersionHomePage#getShowSiteCount`（父类同名方法是恒等实现，虚拟派发不会走到）；另修「更多」格被宿主的 `onLayout` 写死在位置 9 导致的重叠，以及「母开关卡 + 下拉行」零间距连成一片 |
 | **1.14.0** | 新增「用户脚本」（油猴式 .user.js，复用注入通道）+ 注入通道抽共享件 PageInjection |
 | **1.13.0** | 新增「检查更新」：关于页手动 + 打开应用自动（24h 节流），GitHub Releases，零新增依赖 |
 | **1.12.1** | 修「点开功能卡片后浮层太靠下」：浮层让开底部导航栏 + 卡片整体限高，正文与按钮不再被挡 |
@@ -390,6 +392,7 @@ XiaomiBrowserTuner/
 | `ad_host_override` | 接管宿主拦截引擎 | **不再只是模块自己拦**：hook 宿主的规则写入通道（`AdBlockHelper$Updator#updateRuleList`、`AdBlockDataUpdator#{writeJSONFile, updateAdBlackist, update}`），把 `files/data/adblock/miui_blacklist.json` 换成导入的规则、清空它的白名单，再调 `MiuiStatics#notifyAdBlockUpdateConfig()` 让 native 立即重载。详见「接管宿主拦截引擎」一节 | **关**（唯一会改宿主自身数据的开关；关闭即从备份还原） |
 | `misc_host_ad` | 宿主广告开关 | `...BrowserSettings#{isShowAd, isPersonalizedAdEnabled, isAdCustomDisabled}` | 开 |
 | `ui_download` | 下载弹窗 | `...download.CommonDownloadDialogImpl#{onCreateDialog, requestGameRecommend}`、`...DownloadHandler$1#call` | 开 |
+| `ui_quicklink_rows` | 主页快捷方式行数 | `com.android.browser.homepage.SimpleVersionHomePage#getShowSiteCount`（简洁版主页覆写了父类 `BrowserQuickLinksPage#getShowSiteCount`，宿主原生是 `min(总数, 9)`）→ 按 `行数 × QuickLinksPanel#mNumsPerRow − 1` 截断，末行第一格留给「更多」；另 hook `QuickLinksPanel#onLayout` 把「更多」格从写死的位置 9 改回网格末尾 | **关**（下拉可选最多 3 / 4 / 5 行，默认最多 4 行）|
 | `ua_patch` | UA 伪装 | `...util.WebViewSettingConfig#{getDefaultUserAgent, getUserAgentStringWithoutSwan, getMiuiBrowserUseragentSuffix}` | 开 |
 | `ui_search_engine` | 默认搜索引擎 / 切换栏接管 | **注入引擎数据（不改任何 URL 出口）**：hook `...search.SearchEngineDataProvider#{initEngineSet, getSearchEngines, isCustomEngine, getItemTitle, getCurrentEngineTitle}`、`...search.interaction.settings.SearchModuleKVPrefs#isCustomSearchEngineDisplay`、`...search.SearchEngineInfo#getLabel`、`...toolbar.EngineTabsConfig#getAllSearchEngines`、`...toolbar.EngineTabsManager#buildDefaultFixedOrderList`、`...fullsearch.FullSearchActivity#buildSearchUrl`（仅模块引擎） | **开**（下拉可选 bing / google / yandex / baidu，默认 bing） |
 | `misc_unlock_pref` | 解锁隐藏设置项 | `androidx.preference.Preference#isVisible` → **true** | **关**（开启时弹风险确认） |

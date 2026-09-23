@@ -22,10 +22,13 @@ import androidx.compose.ui.Modifier
 import com.hupan.hookbrowser.Config
 import com.hupan.hookbrowser.ui.Detail
 import com.hupan.hookbrowser.ui.DsSpace
+import com.hupan.hookbrowser.ui.EntryDivider
+import com.hupan.hookbrowser.ui.EntryGroup
 import com.hupan.hookbrowser.ui.FEATURE_SECTIONS
 import com.hupan.hookbrowser.ui.MASTER_DETAIL
 import com.hupan.hookbrowser.ui.OptionItem
 import com.hupan.hookbrowser.ui.OptionRow
+import com.hupan.hookbrowser.ui.QUICKLINK_ROWS_OPTIONS
 import com.hupan.hookbrowser.ui.SEARCH_ENGINE_OPTIONS
 import com.hupan.hookbrowser.ui.SectionHeader
 import com.hupan.hookbrowser.ui.TargetStatusCard
@@ -56,6 +59,8 @@ internal fun FeaturesPage(
     val uaOn = masterOn && (values[Config.UA_PATCH] ?: Config.defaultOf(Config.UA_PATCH))
     val engineOn = masterOn &&
         (values[Config.UI_SEARCH_ENGINE] ?: Config.defaultOf(Config.UI_SEARCH_ENGINE))
+    val quickLinkRowsOn = masterOn &&
+        (values[Config.UI_QUICKLINK_ROWS] ?: Config.defaultOf(Config.UI_QUICKLINK_ROWS))
 
     fun labelOf(options: List<OptionItem>, key: String, fallback: String): String =
         options.firstOrNull { it.key == key }?.label ?: fallback
@@ -96,44 +101,81 @@ internal fun FeaturesPage(
             FEATURE_SECTIONS.forEach { (sectionTitle, toggles) ->
                 item { SectionHeader(sectionTitle) }
                 items(items = toggles, key = { it.key }) { toggle ->
-                    ToggleCard(
-                        title = toggle.title,
-                        summary = toggle.summary,
-                        checked = values[toggle.key] ?: toggle.default,
-                        enabled = masterOn,
-                        onCheckedChange = { onUpdate(toggle.key, it) },
-                        onShowDetail = { onShowDetail(toggle.key, toggle.title, toggle.detail) },
-                    )
-                    // UA 与搜索引擎两项各带一条下拉：紧跟在母开关卡片后面
-                    when (toggle.key) {
-                        Config.UA_PATCH -> {
-                            val current = strings[Config.UA_MODE] ?: ""
-                            OptionRow(
-                                title = "UA 伪装模式",
-                                value = labelOf(UA_OPTIONS, current, current),
-                                enabled = uaOn,
-                                onClick = {
-                                    onShowOption("UA 伪装模式", UA_OPTIONS, current) { key ->
-                                        onPickString(Config.UA_MODE, key)
-                                    }
-                                },
-                            )
-                        }
+                    // UA / 默认搜索引擎 / 快捷方式行数三项各带一条下拉。母卡 + 下拉行必须
+                    // 合到一张卡里（EntryGroup + EntryDivider）：两张同色圆角卡零间距贴在一起时，
+                    // 圆角处会连成一片，看起来像两条内容挤在同一张卡里（1.15.2 修）。
+                    val grouped = toggle.key == Config.UA_PATCH ||
+                        toggle.key == Config.UI_QUICKLINK_ROWS ||
+                        toggle.key == Config.UI_SEARCH_ENGINE
 
-                        Config.UI_SEARCH_ENGINE -> {
-                            val current = strings[Config.SEARCH_ENGINE_TARGET] ?: ""
-                            OptionRow(
-                                title = "选择引擎",
-                                value = labelOf(SEARCH_ENGINE_OPTIONS, current, current),
-                                enabled = engineOn,
-                                onClick = {
-                                    onShowOption(
-                                        "选择引擎",
-                                        SEARCH_ENGINE_OPTIONS,
-                                        current,
-                                    ) { key -> onPickString(Config.SEARCH_ENGINE_TARGET, key) }
-                                },
-                            )
+                    val card: @Composable () -> Unit = {
+                        ToggleCard(
+                            title = toggle.title,
+                            summary = toggle.summary,
+                            checked = values[toggle.key] ?: toggle.default,
+                            enabled = masterOn,
+                            onCheckedChange = { onUpdate(toggle.key, it) },
+                            onShowDetail = { onShowDetail(toggle.key, toggle.title, toggle.detail) },
+                            flat = grouped,
+                        )
+                    }
+
+                    if (!grouped) {
+                        card()
+                    } else {
+                        EntryGroup {
+                            card()
+                            EntryDivider()
+                            when (toggle.key) {
+                                Config.UA_PATCH -> {
+                                    val current = strings[Config.UA_MODE] ?: ""
+                                    OptionRow(
+                                        title = "UA 伪装模式",
+                                        value = labelOf(UA_OPTIONS, current, current),
+                                        enabled = uaOn,
+                                        flat = true,
+                                        onClick = {
+                                            onShowOption("UA 伪装模式", UA_OPTIONS, current) { key ->
+                                                onPickString(Config.UA_MODE, key)
+                                            }
+                                        },
+                                    )
+                                }
+
+                                Config.UI_QUICKLINK_ROWS -> {
+                                    val current = strings[Config.UI_QUICKLINK_ROWS_VALUE] ?: ""
+                                    OptionRow(
+                                        title = "行数",
+                                        value = labelOf(QUICKLINK_ROWS_OPTIONS, current, current),
+                                        enabled = quickLinkRowsOn,
+                                        flat = true,
+                                        onClick = {
+                                            onShowOption(
+                                                "主页快捷方式行数",
+                                                QUICKLINK_ROWS_OPTIONS,
+                                                current,
+                                            ) { key -> onPickString(Config.UI_QUICKLINK_ROWS_VALUE, key) }
+                                        },
+                                    )
+                                }
+
+                                Config.UI_SEARCH_ENGINE -> {
+                                    val current = strings[Config.SEARCH_ENGINE_TARGET] ?: ""
+                                    OptionRow(
+                                        title = "选择引擎",
+                                        value = labelOf(SEARCH_ENGINE_OPTIONS, current, current),
+                                        enabled = engineOn,
+                                        flat = true,
+                                        onClick = {
+                                            onShowOption(
+                                                "选择引擎",
+                                                SEARCH_ENGINE_OPTIONS,
+                                                current,
+                                            ) { key -> onPickString(Config.SEARCH_ENGINE_TARGET, key) }
+                                        },
+                                    )
+                                }
+                            }
                         }
                     }
                 }

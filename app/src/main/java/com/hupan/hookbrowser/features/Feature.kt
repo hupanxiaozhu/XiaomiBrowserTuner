@@ -27,6 +27,7 @@ internal object Features {
         HostAdOverrideFeature,
         UserScriptFeature,
         DownloadFeature,
+        HomeQuickLinkRowsFeature,
         UaFeature,
         SearchEngineFeature,
         UnlockPrefFeature,
