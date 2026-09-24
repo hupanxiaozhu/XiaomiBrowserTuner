@@ -3,6 +3,7 @@ package com.hupan.hookbrowser
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 反射工具 —— 替代旧版 `XposedHelpers`。
@@ -27,66 +28,66 @@ internal object Xp {
 
     // ===================== 字段 =====================
 
+    /**
+     * 字段查找缓存（1.15.5）。
+     *
+     * `getDeclaredField` 每次都要在类的字段表里查一遍，找不到还得构造 `NoSuchFieldException`
+     * （填栈不便宜），沿继承链找更要把父类逐个走一遍。而 hook 回调里读字段是高频动作 ——
+     * `QuickLinksPanel#onLayout` 的 after 一次要读 7 个字段，这个方法在主页滚动时每帧都会跑 ——
+     * 所以按「运行时类 + 字段名」缓存查找结果，`setAccessible(true)` 也随之只做一次。
+     *
+     * 用 [MISS] 哨兵把「找不到」一并缓存：字段不存在同样要遍历整条继承链，不该每帧重来。
+     * 宿主换版后走的是新的 ClassLoader，缓存自然失效，不会读到旧版本的字段。
+     */
+    private val fieldCache = ConcurrentHashMap<String, Any>()
+    private val MISS = Any()
+
+    private fun findFieldCached(cls: Class<*>, name: String): Field? {
+        val key = cls.name + '#' + name
+        fieldCache[key]?.let { return if (it === MISS) null else it as Field }
+        var c: Class<*>? = cls
+        while (true) {
+            val cur: Class<*> = c ?: break
+            val f = runCatching { cur.getDeclaredField(name) }.getOrNull()
+            if (f != null) {
+                runCatching { f.isAccessible = true }
+                fieldCache[key] = f
+                return f
+            }
+            c = cur.superclass
+        }
+        fieldCache[key] = MISS
+        return null
+    }
+
     /** 读实例字段（沿继承链向上找）；失败返回 null */
     fun field(obj: Any?, name: String): Any? {
         if (obj == null) return null
-        var c: Class<*>? = obj.javaClass
-        while (true) {
-            // `?: break` 而不是 `while (c != null)`：局部 var 在循环里会被重新赋值，
-            // 依赖智能转换容易被编译器拒掉（"captured by a changing closure"）。
-            val cls: Class<*> = c ?: break
-            val f = runCatching { cls.getDeclaredField(name) }.getOrNull()
-            if (f != null) {
-                f.isAccessible = true
-                return runCatching { f.get(obj) }
-                    .onFailure { XLog.v("读字段 $name 失败: ${it.javaClass.simpleName}") }
-                    .getOrNull()
-            }
-            c = cls.superclass
-        }
-        return null
+        val f = findFieldCached(obj.javaClass, name) ?: return null
+        return runCatching { f.get(obj) }
+            .onFailure { XLog.v("读字段 $name 失败: ${it.javaClass.simpleName}") }
+            .getOrNull()
     }
 
     /** 读静态字段 */
     fun staticField(cls: Class<*>?, name: String): Any? {
         if (cls == null) return null
-        return runCatching {
-            val f = findField(cls, name) ?: return@runCatching null
-            f.isAccessible = true
-            f.get(null)
-        }.onFailure { XLog.v("读静态字段 $name 失败: ${it.javaClass.simpleName}") }.getOrNull()
+        val f = findFieldCached(cls, name) ?: return null
+        return runCatching { f.get(null) }
+            .onFailure { XLog.v("读静态字段 $name 失败: ${it.javaClass.simpleName}") }
+            .getOrNull()
     }
 
     /** 写实例字段 */
     fun setField(obj: Any?, name: String, value: Any?) {
         if (obj == null) return
-        var c: Class<*>? = obj.javaClass
-        while (true) {
-            val cls: Class<*> = c ?: break
-            val f = runCatching { cls.getDeclaredField(name) }.getOrNull()
-            if (f != null) {
-                runCatching {
-                    f.isAccessible = true
-                    f.set(obj, value)
-                }.onFailure { XLog.v("setField $name 失败: ${it.javaClass.simpleName}") }
-                return
-            }
-            c = cls.superclass
-        }
+        val f = findFieldCached(obj.javaClass, name) ?: return
+        runCatching { f.set(obj, value) }
+            .onFailure { XLog.v("setField $name 失败: ${it.javaClass.simpleName}") }
     }
 
     /** 写布尔字段（`Field.set` 装箱，Kotlin 的 Boolean 自动装箱，无需单独实现） */
     fun setBoolField(obj: Any?, name: String, value: Boolean) = setField(obj, name, value)
-
-    private fun findField(cls: Class<*>, name: String): Field? {
-        var c: Class<*>? = cls
-        while (true) {
-            val cur: Class<*> = c ?: break
-            runCatching { cur.getDeclaredField(name) }.getOrNull()?.let { return it }
-            c = cur.superclass
-        }
-        return null
-    }
 
     // ===================== 方法调用 =====================
 

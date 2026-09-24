@@ -12,8 +12,18 @@ internal abstract class Feature(val key: String) {
 
     abstract fun install(cl: ClassLoader)
 
-    /** 开关状态；宿主进程按路径直读模块写出的 SP XML（见 Config） */
+    /** 开关状态（会按 TTL 刷新快照，低频调用点用这个） */
     protected fun on(): Boolean = Config.masterOn() && Config.on(key)
+
+    /**
+     * 热路径专用的开关判断（1.15.5）：只读本地快照，**不发起跨进程刷新**。
+     *
+     * 布局 / 绘制回调里不要用 [on] —— 它在快照过期时会把一次跨进程读压进当前帧，
+     * 直接表现为掉帧（`QuickLinksPanel#onLayout` 的重排就是这么被发现的）。
+     * 快照里还没有该 key 时返回 false，即保守地不干预宿主。
+     */
+    protected fun onCached(): Boolean =
+        Config.onCached(Config.MASTER) == true && Config.onCached(key) == true
 }
 
 internal object Features {
@@ -28,6 +38,7 @@ internal object Features {
         UserScriptFeature,
         DownloadFeature,
         HomeQuickLinkRowsFeature,
+        HomeBounceFeature,
         UaFeature,
         SearchEngineFeature,
         UnlockPrefFeature,

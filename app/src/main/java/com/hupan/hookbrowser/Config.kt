@@ -68,8 +68,11 @@ internal object Config {
     /** 1.15.0：简洁版主页「快捷方式」最多几行（主开关，默认关 = 完全不干预宿主的排布） */
     const val UI_QUICKLINK_ROWS = "ui_quicklink_rows"
 
-    /** 1.15.0：上面那个开关的行数取值（"3" / "4" / "5"，见 features/QuickLinkRows） */
+    /** 1.15.0：上面那个开关的行数取值（"3" / "4" / "5" / "10"，见 features/QuickLinkRows） */
     const val UI_QUICKLINK_ROWS_VALUE = "ui_quicklink_rows_value"
+
+    /** 1.15.7：简洁版主页滚到边界时的回弹，以及由回弹带出来的「强制显示搜索栏」 */
+    const val UI_HOME_BOUNCE = "ui_home_bounce"
 
     /** 默认值表：与 ui/FeatureCatalog.kt 的 `Toggle.default` 同源（界面读 [defaultOf]） */
     private val DEFAULTS = linkedMapOf(
@@ -105,6 +108,9 @@ internal object Config {
         // 1.15.0：主页快捷方式行数。默认关 —— 关着时一个 hook 都不生效，宿主怎么排就怎么排，
         // 只有用户主动开（并选了行数）才接管。
         UI_QUICKLINK_ROWS to false,
+        // 1.15.7：主页滚动回弹。**默认 false**：关回弹等于拿掉宿主的边界手感反馈，
+        // 保守起步 —— 用户明确不想要这个动效时才开。
+        UI_HOME_BOUNCE to false,
         MISC_UNLOCK_PREF to false,
         MISC_DEBUG to false,
         MISC_SECURITY to false
@@ -263,6 +269,18 @@ internal object Config {
         if (r == null) noteFailure(key)
         return v
     }
+
+    /**
+     * 只读本地快照的开关值，**绝不发起跨进程刷新**（1.15.5）。
+     *
+     * 给布局 / 绘制这类同步热路径用：[on] 在快照过期时会走 [refreshIfStale] →
+     * `handle().all`，那是一次跨进程往返 —— 它落在帧内就是实打实的掉帧。
+     * 热路径只认上一次快照，快照的新鲜度交给低频调用点（如 `getShowSiteCount`）去刷新。
+     *
+     * 返回 `null` 表示「本地快照里还没有这个 key」，由调用方决定兜底策略 ——
+     * 通常是保守跳过，不会因此放宽行为。
+     */
+    fun onCached(key: String): Boolean? = boolCache[key]
 
     /** 总开关单独走一条：任何单功能开关都不能绕开它 */
     fun masterOn(): Boolean = on(MASTER)

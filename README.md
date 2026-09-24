@@ -32,7 +32,7 @@
 
 - 包名：`com.hupan.hookbrowser`
 - 作用域：`com.android.browser`
-- 当前版本：**1.15.4**（versionCode 43）
+- 当前版本：**1.15.7**（versionCode 46）
 
 ---
 
@@ -229,6 +229,9 @@ hook 目标是对着宿主 **20.27.1010901** 逐个核对过的。小米浏览�
 
 | 版本 | 主题 |
 |---|---|
+| **1.15.7** | 新增「主页滚动回弹」开关（默认关闭）：去掉简洁版主页滚到顶部 / 底部时的回弹动画，同时不再出现「滚到底部被强制显示搜索栏」—— 这两件事在宿主里是同一套逻辑，回弹把搜索栏带了出来。滚动容器是自绘的 `homepage.infoflow.view.InfoFlowScrollView`（`extends FrameLayout`），开启后置 `overScrollMode = OVER_SCROLL_NEVER` 并把 `mOverscrollDistance` / `mOverflingDistance` 归零（两道保险）；信息流页复用同一容器类，那里按 `mIsSimpleHome` 区分保留原生手感 |
+| **1.15.6** | 「主页快捷方式行数」新增「最多 10 行」档（原 3 / 4 / 5 行）：机制不变，上限 = 行数 × 每行个数 − 1，5 列时 10 行对应 49 个站点格。⚠ 10 行格子数是 5 行的两倍多、内容远超一屏必定要滚动，宿主自绘网格无 view 复用、绘制成本随行数线性上升 —— 这是功能的固有代价。（由酷安用户 **@酩安小煸** 反馈提出；**没有这个需求不用打开**，默认即关闭） |
+| **1.15.5** | 修「主页快捷方式多行时滑动掉帧」：`QuickLinksPanel#onLayout` 的 after 回调在滚动时每次布局都要完整跑，三处开销叠在这条热路径上 —— 开关判断在本地快照过期时会做一次跨进程读（压在帧内）、一次回调 7 个字段每次都重新反射查找、hook 适配器对纯 after 的回调也照做参数快照。现改为热路径走只读快照（`onCached`，不发起跨进程刷新）+ 反射层字段查找缓存 + 纯 after 跳过参数快照；另在动手前先看 `childCount`，站点格没超过原生 9 个时直接放行（零反射）。（由酷安用户 **@酩安小煸** 反馈的「解限后滑动掉帧」） |
 | **1.15.4** | 补齐 APK 下载的商店版推广：APK 与普通文件共用 `CommonDownloadDialogImpl`，它按 `BaseDownloadDialogImpl#mDownloadFromMarket` 二选一加载 `download_dialog.xml` / `download_dialog_normal.xml`，两份布局都带「应用商店安装包 / 官方检测 / 原安装包」商店区 —— 现在连同标题一起置 `GONE`（只改可见性，按钮不动）。另拦掉 `guidecard.GuideCardManager` 的「下载引导卡」：不预取商店版应用信息、不弹那张「识别到你可能在找的资源」贴底卡。（问题由酷安用户 **@闲云野鹤悠游林** 反馈） |
 | **1.15.3** | 修「用浏览器打开下载链接直接闪退」：那是**普通文件下载必崩** —— 原「下载弹窗」把 `CommonDownloadDialogImpl#onCreateDialog` 的返回值置成 null，而宿主拿到后不判空就 `dialog.setCanceledOnTouchOutside(...)`（androidx `DialogFragment` 同样直接 `setupDialog`）→ 主线程 NPE。现改为**不再拦弹窗本身**，只拦弹窗里的推广（不请求小游戏推荐 + after 把推荐卡置 `GONE`）；功能更名「下载推广」 |
 | **1.15.2** | 新增「主页快捷方式行数」：给简洁版主页的快捷方式网格设上限（最多 3 / 4 / 5 行）。hook 目标是 `homepage.SimpleVersionHomePage#getShowSiteCount`（父类同名方法是恒等实现，虚拟派发不会走到）；另修「更多」格被宿主的 `onLayout` 写死在位置 9 导致的重叠，以及「母开关卡 + 下拉行」零间距连成一片 |

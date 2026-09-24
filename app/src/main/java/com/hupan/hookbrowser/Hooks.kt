@@ -217,14 +217,18 @@ private class SafeHook(
         // 拷成数组交给回调，语义与旧代码完全一致（包括 `p.args[0] = x` 这种写元素）。
         val size = chain.args.size
         val call = HookedCall(chain.thisObject, Array(size) { chain.args[it] }, exec)
-        val originalArgs = call.args.copyOf()
+        // 只有 before 阶段可能改参数，纯 after 的 hook 也就不用留快照。
+        // 这类 hook 常在帧内反复触发（如 `QuickLinksPanel#onLayout` 的重排），省掉这次
+        // 数组拷贝与逐元素比较，少一份每帧的无谓分配。
+        val originalArgs = if (before != null) call.args.copyOf() else null
 
         fire(before, call)
         if (call.hasResult) return call.result
         val value: Any? = try {
             // 旧 API 里改 param.args 会真的换掉实参；只在确实被改过时才把新数组传进去。
             // ⚠ proceed(Object[]) **不是 vararg**（Kotlin 里不能用 `*` 展开），直接传数组。
-            if (call.args.contentEquals(originalArgs)) chain.proceed() else chain.proceed(call.args)
+            if (originalArgs == null || call.args.contentEquals(originalArgs)) chain.proceed()
+            else chain.proceed(call.args)
         } catch (t: Throwable) {
             call.throwable = t
             throw t

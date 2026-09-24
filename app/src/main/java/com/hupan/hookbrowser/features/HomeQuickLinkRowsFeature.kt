@@ -70,7 +70,25 @@ import com.hupan.hookbrowser.Hooks
  * 于是它回到末尾（位置 = childCount − 1），站点格各就各位。宿主自己的公式照抄：
  * 行列由 `pos / mNumsPerRow`、`pos % mNumsPerRow` 折算，间距取该面板的几个 `mSpacing*` 字段。
  *
- * 只在开关开着时动手；原生场景（`show ≤ 9`）算出来的位置和宿主一致，天然幂等。
+ * 只在开关开着时动手。
+ *
+ * ## 1.15.5 修：多行设置下主页滚动掉帧
+ *
+ * 症状很能说明问题 ——「关掉开关不卡；多行时主页需要滚动，滑动就掉帧；3 行 / 4 行一屏
+ * 放得下不用滚，所以察觉不到」。滚动会反复触发宿主布局，而 `onLayout` 的 after 每次都要
+ * 完整跑一遍，三处开销正好叠在这条热路径上：
+ *
+ * 1. `on()` 在快照过期时走 `handle().all` —— **一次跨进程读压在帧内**（1s TTL，所以是
+ *    「滑动时每隔一会儿顿一下」的手感）；
+ * 2. 7 个字段的反射查找，而 `Xp.field` 当时**没有缓存**，每次都重新 `getDeclaredField`
+ *    并 `setAccessible(true)`，字段落在父类时还要白白构造一轮 `NoSuchFieldException`；
+ * 3. 适配器对「纯 after」的 hook 也照做一遍参数快照（数组拷贝 + 逐元素比较）。
+ *
+ * 三处都已处理：热路径改用只读快照的 `onCached()`（跨进程刷新留给 `cap()` 那种每次
+ * 数据更新的低频调用点）、`Xp` 增加字段查找缓存、适配器对纯 after 的 hook 跳过参数快照。
+ *
+ * 另外动手前先看 `childCount`：站点格没超过原生 9 个时宿主的位置 9 本来就是对的，
+ * 直接放行 —— 开关关着、或站点本来就不多的用户，这里是一个反射都不做的零开销路径。
  *
  * ## 边界都很保守
  *
@@ -117,10 +135,19 @@ internal object HomeQuickLinkRowsFeature : Feature(Config.UI_QUICKLINK_ROWS) {
     /** 读不到字段时的兜底：实测手机 5 列 */
     private const val FALLBACK_PER_ROW = 5
 
+    /**
+     * 原生上限下的 child 数：9 个站点格 + 1 个「更多」格。
+     *
+     * 没超过它就是原生排布 —— 包括「开关关着」和「站点本来就不超过 9 个」两种最常见的情形，
+     * 此时宿主写死的位置 9 本来就是对的，一次字段读取都不必做（1.15.5）。
+     */
+    private const val NATIVE_CHILD_COUNT = 10
+
     override fun install(cl: ClassLoader) {
         Hooks.hook(cl, CLS_SIMPLE_HOME, METHOD) { p -> cap(p) }
         Hooks.hook(cl, CLS_BASE, METHOD) { p -> cap(p) }
-        // 「更多」格的位置修正：宿主把它写死在位置 9，站点格一超过 9 个就会和它叠在一起
+        // 「更多」格的位置修正：宿主把它写死在位置 9，站点格一超过 9 个就会和它叠在一起。
+        // ⚠ 这个回调落在布局热路径上（可滚动的主页每帧都会触发），实现里必须保持早退（1.15.5）
         Hooks.hookAfter(cl, CLS_PANEL, METHOD_ON_LAYOUT) { p -> realignMoreCell(p) }
     }
 
@@ -131,6 +158,8 @@ internal object HomeQuickLinkRowsFeature : Feature(Config.UI_QUICKLINK_ROWS) {
      * `9 < total ≤ 上限` 这一段同样会生效，不覆盖就等于没改（1.15.0 的坑）。
      */
     private fun cap(p: HookedCall) {
+        // 这里是**低频**调用点（每次数据更新才走一次），所以照常走 on() —— 它会按 TTL
+        // 刷新开关快照，正好给下面 onLayout 热路径上的 onCached() 提供数据（1.15.5）
         if (!on()) return
         val rows = Config.quickLinkRows()
         if (rows <= 0) return
@@ -148,8 +177,13 @@ internal object HomeQuickLinkRowsFeature : Feature(Config.UI_QUICKLINK_ROWS) {
      * 其余格子的位置本来就是对的，不碰。
      */
     private fun realignMoreCell(p: HookedCall) {
-        if (!on()) return
         val panel = p.thisObject as? ViewGroup ?: return
+        // ⚠ 这是**布局热路径**：主页可滚动时每帧都可能跑到这里，所以先用最廉价的两个条件
+        // 把绝大多数情况挡掉，再去碰反射与开关。
+        // 站点格没超过原生 9 个 → 宿主的硬编码位置 9 本来就是对的（1.15.5）
+        if (panel.childCount <= NATIVE_CHILD_COUNT) return
+        // 开关判断走只读快照：绝不允许一次跨进程读落进当前帧（掉帧的直接来源）
+        if (!onCached()) return
         val more = Hooks.field(panel, FIELD_MORE_CELL) as? View ?: return
         val pos = panel.indexOfChild(more)
         if (pos < 0) return
@@ -194,12 +228,19 @@ internal object HomeQuickLinkRowsFeature : Feature(Config.UI_QUICKLINK_ROWS) {
  *
  * 存字符串而不是整数：remote preferences 那一组只按 String / Boolean 镜像，
  * 整数落进去宿主侧拿到的是字符串，两边解析规则不一致就会各说各话。
+ *
+ * 上限换算（手机 5 列）：N 行 ≈ `5N − 1` 个站点格 —— 3→14、4→19、5→24、10→49。
+ * 10 行是 1.15.6 加的：内容高度远超一屏，必然要滚动，格子数也是 5 行的两倍，
+ * 绘制成本同比例上升（这是功能的固有代价，见类头「1.15.5」那一节）。
  */
 internal object QuickLinkRows {
 
     const val ROWS_3 = "3"
     const val ROWS_4 = "4"
     const val ROWS_5 = "5"
+
+    /** 1.15.6：最多 10 行（5 列时 49 格）。给站点多、愿意用滚动换「一屏看尽」的用户 */
+    const val ROWS_10 = "10"
 
     const val DEFAULT = ROWS_4
 }

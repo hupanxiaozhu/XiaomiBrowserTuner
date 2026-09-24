@@ -194,7 +194,7 @@ internal val FUNCTION_TOGGLES = listOf(
         summary = "给简洁版主页的快捷方式设行数上限",
         default = Config.defaultOf(Config.UI_QUICKLINK_ROWS),
         detail = Detail(
-            purpose = "给简洁版主页的快捷方式网格设一个行数上限（3 / 4 / 5 行）。" +
+            purpose = "给简洁版主页的快捷方式网格设一个行数上限（3 / 4 / 5 / 10 行）。" +
                 "官方没有这项设置：简洁版主页写死了「站点格数 ≤ 9」，也就是最多 2 行（5 列）" +
                 "再多就只剩一个「更多」入口。",
             target = "com.android.browser.homepage.SimpleVersionHomePage#getShowSiteCount(int) —— " +
@@ -205,10 +205,32 @@ internal val FUNCTION_TOGGLES = listOf(
                 "写死成 9（原生假设站点格不超过 9 个、第 10 格留给它），放开上限后它会和站点格撞在同一格上，" +
                 "所以布局结束后要把「更多」格单独按真实下标重排一次。",
             effect = "按「行数 × 每行个数 − 1」截断（末行第一格留给「更多」）：站点多于上限时，" +
-                "多出来的自动归进宿主的「更多」入口，不丢也不删数据。",
+                "多出来的自动归进宿主的「更多」入口，不丢也不删数据。5 列时各行对应的站点格上限：" +
+                "3 行 14 个、4 行 19 个、5 行 24 个、10 行 49 个。",
             caveat = "这是上限不是补齐 —— 快捷方式不足 N 行时只显示自然行数，不会补空格子。" +
-                "想真的排到 4 / 5 行，得先有那么多快捷方式（长按主页或走「更多」添加）；" +
+                "想真的排到 4 / 5 / 10 行，得先有那么多快捷方式（长按主页或走「更多」添加）。" +
+                "⚠ 10 行时格子数最多 49 个，内容高度远超一屏、必定要滚动，而且宿主是自绘网格、" +
+                "没有 view 复用，绘制成本随行数线性上升 —— 行数调得越高，滚动越容易掉帧。" +
                 "编辑 / 拖动排序时格子变多的布局表现以真机为准。",
+        ),
+    ),
+    Toggle(
+        key = Config.UI_HOME_BOUNCE,
+        title = "主页滚动回弹",
+        summary = "去掉滚到边界时的回弹与搜索栏强制显示",
+        default = Config.defaultOf(Config.UI_HOME_BOUNCE),
+        detail = Detail(
+            purpose = "简洁版主页滚到顶部 / 底部时不再有回弹（弹性过冲）动画，" +
+                "也不再出现「滚到底部被强制显示搜索栏」。" +
+                "两者在宿主里是同一套逻辑：是回弹把搜索栏带出来的。",
+            target = "com.android.browser.homepage.infoflow.view.InfoFlowScrollView —— " +
+                "简洁版主页的滚动容器是自绘的（extends FrameLayout，不是原生 ScrollView）。" +
+                "开启后把 overScrollMode 设成 OVER_SCROLL_NEVER，" +
+                "并把 mOverscrollDistance / mOverflingDistance 两个「允许越界距离」一并置 0（两道保险）。",
+            effect = "滚到顶 / 到底都是硬停：没有回弹、没有边缘光晕，" +
+                "也不再触发由回弹带出来的搜索栏显示。",
+            caveat = "拿掉的是宿主的边界手感反馈，不影响滚动本身、也不影响任何功能入口。" +
+                "同一个容器类在信息流页也复用，那里按 mIsSimpleHome 区分、保留原生手感。",
         ),
     ),
     Toggle(
@@ -320,6 +342,7 @@ internal val UI_TOGGLES = FUNCTION_TOGGLES.filter {
     it.key in setOf(
         Config.UI_DOWNLOAD,
         Config.UI_QUICKLINK_ROWS,
+        Config.UI_HOME_BOUNCE,
         Config.UA_PATCH,
         Config.UI_SEARCH_ENGINE,
     )
@@ -391,6 +414,7 @@ internal val QUICKLINK_ROWS_OPTIONS = listOf(
     OptionItem(QuickLinkRows.ROWS_3, "最多 3 行"),
     OptionItem(QuickLinkRows.ROWS_4, "最多 4 行"),
     OptionItem(QuickLinkRows.ROWS_5, "最多 5 行"),
+    OptionItem(QuickLinkRows.ROWS_10, "最多 10 行"),
 )
 
 /**
@@ -433,8 +457,38 @@ private const val LEGACY_HELPERS = "Xposed" + "Helpers"
 
 internal val CHANGELOGS = listOf(
     Changelog(
-        version = "1.15.4",
+        version = "1.15.7",
         tag = "当前",
+        items = listOf(
+            "新增「主页滚动回弹」开关（默认关闭）：去掉简洁版主页滚到顶部 / 底部时的回弹（弹性过冲）动画，同时不再出现「滚到底部被强制显示搜索栏」—— 这两件事在宿主里是同一套逻辑，是回弹把搜索栏带出来的",
+            "简洁版主页的滚动容器是自绘的 homepage.infoflow.view.InfoFlowScrollView（extends FrameLayout，不是原生 ScrollView），回弹走 View#overScrollBy 那条路。挂点是容器自己重写的 onLayout —— 它没有重写 onAttachedToWindow（那个方法继承自 View，而挂载只认本类声明的方法，挂上去会静默失效）。首次布局时把 overScrollMode 置 OVER_SCROLL_NEVER（框架层不再有边缘光晕与过冲效果）、mOverscrollDistance / mOverflingDistance 置 0（容器传给 overScrollBy 的允许越界距离，回弹幅度的直接来源）—— 前者管框架效果、后者管这个 View 自己的越界量，两道都要",
+            "同一容器类在信息流页也复用，那里按 mIsSimpleHome 区分、保留原生的边界手感；字段读不到时不做区分（宁可生效，也不静默失效）",
+            "默认关闭：拿掉的是宿主的边界手感反馈，属于削弱宿主原有行为的一类，按项目约定保守起步",
+        ),
+    ),
+    Changelog(
+        version = "1.15.6",
+        tag = "稳定版",
+        items = listOf(
+            "「主页快捷方式行数」新增「最多 10 行」档（原为 3 / 4 / 5 行）。机制完全不变：上限 = 行数 × 每行个数 − 1，5 列时各行对应 3 行 14 个 / 4 行 19 个 / 5 行 24 个 / 10 行 49 个站点格",
+            "站点不足上限时按实际数量铺、不补空格子 —— 这是上限不是补齐：行数调大了但快捷方式没那么多，看到的仍是自然行数",
+            "⚠ 10 行的代价：格子最多 49 个（5 行的两倍多），内容高度远超一屏、必定要滚动；宿主是自绘网格且没有 view 复用，绘制成本随行数线性上升。1.15.5 优化掉的是模块自身的 hook 开销，绘制属于功能的固有成本 —— 行数越高越容易掉帧",
+        ),
+    ),
+    Changelog(
+        version = "1.15.5",
+        tag = "稳定版",
+        items = listOf(
+            "修「主页快捷方式设成 5 行后，上下滑动掉帧」。症状本身就指向布局热路径：关掉开关不卡；多行时主页内容变高、需要滚动才掉帧，而 3 行 / 4 行一屏放得下、不滚动，所以几乎察觉不到 —— 滚动会反复触发宿主 QuickLinksPanel#onLayout，而本功能的 after 回调每次都要完整跑一遍",
+            "掉帧来自三处叠在同一条路径上的开销：① 开关判断走 on()，本地快照过期时（1s TTL）会做一次跨进程读（handle().all），压在帧内就是实打实的掉帧；② 一次回调要反射读 7 个字段，而字段查找没有缓存，每次重新 getDeclaredField 并 setAccessible(true)，字段落在父类时还要白构造一轮异常；③ hook 适配器对「纯 after」的回调也照做一遍参数快照（数组拷贝 + 逐元素比较）",
+            "三处都改掉了：布局热路径改用只读快照的 onCached()（只读本地缓存、绝不发起跨进程刷新；刷新留给 getShowSiteCount 那种每次数据更新才走一次的低频调用点）、反射层增加「运行时类 + 字段名」的字段查找缓存（setAccessible 随之只做一次，「找不到」也一并缓存、不再每帧遍历整条继承链）、适配器在 before 为空时跳过参数快照",
+            "另加一条零开销快速路径：动手前先看网格的 childCount，站点格没超过原生 9 个时宿主的硬编码位置 9 本来就是对的，直接放行 —— 开关关着、或站点本来就不多的用户，这个回调里一个反射都不做",
+            "顺带修正 1.15.2 注释里一处不准确的说法：「原生场景算出来和宿主一致、天然幂等」只在 childCount 恰好为 10 时成立",
+        ),
+    ),
+    Changelog(
+        version = "1.15.4",
+        tag = "稳定版",
         items = listOf(
             "补齐 APK 下载时的商店版推广。APK 与普通文件下载共用同一个 download.CommonDownloadDialogImpl 弹窗（只有「带风险信息」才换成 WarnDownloadDialogImpl），它按 BaseDownloadDialogImpl#mDownloadFromMarket 二选一加载布局，两份布局里都有「应用商店安装包」标题 + 「官方检测 / 安全」标签 + 「原安装包」——这就是「APK 下载时冒出来的小米应用商店审核版本」",
             "弹窗内的商店推广区（tvStoreTitle 标题、rlStore 容器）现在一并置 GONE。只改可见性、不动任何按钮，所以「原安装包 / 下载」入口照旧可用 —— 上次把整个弹窗拦掉的教训（那是下载的确认入口）不再重犯",

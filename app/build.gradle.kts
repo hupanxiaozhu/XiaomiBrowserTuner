@@ -37,8 +37,8 @@ android {
         // 1.15.0：新增「主页快捷方式行数」（未发布，实现有误，内容并入 1.15.1）。
         // 1.14.0：新增「用户脚本」（油猴式 .user.js，复用 onPageFinished 注入通道），
         // 注入通道抽成共享件 webpage/PageInjection；其余功能与 hook 逻辑未动。
-        versionCode = 43
-        versionName = "1.15.4"
+        versionCode = 46
+        versionName = "1.15.7"
     }
 
     buildTypes {
