@@ -32,7 +32,7 @@
 
 - 包名：`com.hupan.hookbrowser`
 - 作用域：`com.android.browser`
-- 当前版本：**1.15.7**（versionCode 46）
+- 当前版本：**1.15.8**（versionCode 47）
 
 ---
 
@@ -229,6 +229,7 @@ hook 目标是对着宿主 **20.27.1010901** 逐个核对过的。小米浏览�
 
 | 版本 | 主题 |
 |---|---|
+| **1.15.8** | 修「功能页顶部把已安装的宿主显示成『未安装』」：`AndroidManifest.xml` 少了一条**包可见性**声明。模块 `targetSdk 34`，Android 11 起系统按包可见性过滤 `PackageManager#getPackageInfo`，没在 `<queries>` 里声明过的包一律抛 `NameNotFoundException`，被 `runCatching` 吞掉后回落到「未安装」—— hook 与 DEX 加载不走 PackageManager，所以功能一直是好的，只有这张卡在骗人。补 `<queries><package android:name="com.android.browser" /></queries>`；文案改为「未检测到」（隐藏应用列表 HMA 这类模块在应用侧再过滤一层，queries 挡不住，所以话不说死）；两处重复读取抽成 `readHostVersion()`。（由 QQ 用户 **ai** 与酷安用户 **@XiaoluZhou** 反馈） |
 | **1.15.7** | 新增「主页滚动回弹」开关（默认关闭）：去掉简洁版主页滚到顶部 / 底部时的回弹动画，同时不再出现「滚到底部被强制显示搜索栏」—— 这两件事在宿主里是同一套逻辑，回弹把搜索栏带了出来。滚动容器是自绘的 `homepage.infoflow.view.InfoFlowScrollView`（`extends FrameLayout`），开启后置 `overScrollMode = OVER_SCROLL_NEVER` 并把 `mOverscrollDistance` / `mOverflingDistance` 归零（两道保险）；信息流页复用同一容器类，那里按 `mIsSimpleHome` 区分保留原生手感 |
 | **1.15.6** | 「主页快捷方式行数」新增「最多 10 行」档（原 3 / 4 / 5 行）：机制不变，上限 = 行数 × 每行个数 − 1，5 列时 10 行对应 49 个站点格。⚠ 10 行格子数是 5 行的两倍多、内容远超一屏必定要滚动，宿主自绘网格无 view 复用、绘制成本随行数线性上升 —— 这是功能的固有代价。（由酷安用户 **@酩安小煸** 反馈提出；**没有这个需求不用打开**，默认即关闭） |
 | **1.15.5** | 修「主页快捷方式多行时滑动掉帧」：`QuickLinksPanel#onLayout` 的 after 回调在滚动时每次布局都要完整跑，三处开销叠在这条热路径上 —— 开关判断在本地快照过期时会做一次跨进程读（压在帧内）、一次回调 7 个字段每次都重新反射查找、hook 适配器对纯 after 的回调也照做参数快照。现改为热路径走只读快照（`onCached`，不发起跨进程刷新）+ 反射层字段查找缓存 + 纯 after 跳过参数快照；另在动手前先看 `childCount`，站点格没超过原生 9 个时直接放行（零反射）。（由酷安用户 **@酩安小煸** 反馈的「解限后滑动掉帧」） |

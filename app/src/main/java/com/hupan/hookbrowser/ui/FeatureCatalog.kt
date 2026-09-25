@@ -457,8 +457,19 @@ private const val LEGACY_HELPERS = "Xposed" + "Helpers"
 
 internal val CHANGELOGS = listOf(
     Changelog(
-        version = "1.15.7",
+        version = "1.15.8",
         tag = "当前",
+        items = listOf(
+            "修「功能页顶部把已安装的宿主显示成『未安装』」。问题不在检测逻辑，而在 manifest 少了一条**包可见性**声明：本模块 targetSdk 34，Android 11 起系统会按包可见性过滤 getPackageInfo，没在 <queries> 里声明过的包一律看不见 —— 抛出的 NameNotFoundException 被 try 吞掉、回落到「未安装」。hook 与 DEX 加载不走 PackageManager，所以功能其实一直正常生效，只有这张卡在骗人",
+            "manifest 补上 <queries><package android:name=\"com.android.browser\" />（宿主包名）",
+            "文案不再直接断言「未安装」：查不到时显示「小米浏览器 未检测到」+「可能未安装，也可能是系统限制了模块查看其它应用（不影响功能生效）」。隐藏应用列表（HMA）这类模块会在应用侧再过滤一层 PackageManager，那种情况声明 queries 也挡不住 —— 所以话不能说死",
+            "两处重复的宿主版本读取（功能页状态卡与诊断页）抽成 readHostVersion()；状态卡原来是无 key 的 remember 缓存，现在按 context 记账",
+            "感谢 QQ 用户 ai 与酷安用户 @XiaoluZhou 反馈这个问题 —— 现象定位与复现条件都来自他们的反馈",
+        ),
+    ),
+    Changelog(
+        version = "1.15.7",
+        tag = "稳定版",
         items = listOf(
             "新增「主页滚动回弹」开关（默认关闭）：去掉简洁版主页滚到顶部 / 底部时的回弹（弹性过冲）动画，同时不再出现「滚到底部被强制显示搜索栏」—— 这两件事在宿主里是同一套逻辑，是回弹把搜索栏带出来的",
             "简洁版主页的滚动容器是自绘的 homepage.infoflow.view.InfoFlowScrollView（extends FrameLayout，不是原生 ScrollView），回弹走 View#overScrollBy 那条路。挂点是容器自己重写的 onLayout —— 它没有重写 onAttachedToWindow（那个方法继承自 View，而挂载只认本类声明的方法，挂上去会静默失效）。首次布局时把 overScrollMode 置 OVER_SCROLL_NEVER（框架层不再有边缘光晕与过冲效果）、mOverscrollDistance / mOverflingDistance 置 0（容器传给 overScrollBy 的允许越界距离，回弹幅度的直接来源）—— 前者管框架效果、后者管这个 View 自己的越界量，两道都要",
@@ -734,3 +745,19 @@ internal fun moduleVersion(context: Context): String = runCatching {
     @Suppress("DEPRECATION")
     context.packageManager.getPackageInfo(context.packageName, 0).versionName
 }.getOrNull() ?: "未知"
+
+/**
+ * 读宿主（小米浏览器）已装版本号；**读不到返回 null**。
+ *
+ * <p>必须把「查不到」和「没装」分开：本模块 targetSdk 34，Android 11 起系统按
+ * **包可见性**过滤 `getPackageInfo` —— manifest 里没在 `<queries>` 声明过的包一律抛
+ * `NameNotFoundException`（宿主明明装着也一样）。所以调用方不能用「非空即已装」的语义，
+ * 文案上写「未检测到」而不是「未安装」。
+ *
+ * <p>另一层：隐藏应用列表（HMA）这类模块会在应用侧再过滤一次 PackageManager，
+ * 那种情况下 `<queries>` 也救不了 —— 只能靠文案不把话说死。
+ */
+internal fun readHostVersion(context: Context): String? = runCatching {
+    @Suppress("DEPRECATION")
+    context.packageManager.getPackageInfo(HOST_PACKAGE, 0).versionName
+}.getOrNull()

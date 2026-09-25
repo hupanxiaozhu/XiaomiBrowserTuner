@@ -5,6 +5,22 @@
     <!-- 只用于「从 URL 导入拦截规则」，模块自身不联网做别的事 -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!--
+        包可见性声明（Android 11+ 必需）。
+
+        本模块 targetSdk 34，读宿主版本号走 PackageManager#getPackageInfo。从 Android 11 起
+        系统按「包可见性」过滤这类查询：没在这里声明过的包一律看不见，getPackageInfo 会抛
+        NameNotFoundException —— 即使宿主明明装着。
+
+        症状就是功能页顶部那张卡显示「小米浏览器 未安装」而功能实际生效：hook 与 DEX 加载
+        不走 PackageManager，只有模块进程里查别的应用会中招。
+
+        注意：隐藏应用列表（HMA）这类模块会在应用侧再过滤一层，声明 queries 挡不住它。
+    -->
+    <queries>
+        <package android:name="com.android.browser" />
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"

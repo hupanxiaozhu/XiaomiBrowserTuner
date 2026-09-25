@@ -42,10 +42,10 @@ import com.hupan.hookbrowser.ModuleService
 import com.hupan.hookbrowser.ui.DsRadius
 import com.hupan.hookbrowser.ui.DsSpace
 import com.hupan.hookbrowser.ui.DsType
-import com.hupan.hookbrowser.ui.HOST_PACKAGE
 import com.hupan.hookbrowser.ui.HOST_VERSION_NAME
 import com.hupan.hookbrowser.ui.StatusPill
 import com.hupan.hookbrowser.ui.moduleVersion
+import com.hupan.hookbrowser.ui.readHostVersion
 import com.hupan.hookbrowser.ui.navigation.LocalNavigator
 import com.hupan.hookbrowser.ui.utils.pageContentPadding
 import com.hupan.hookbrowser.ui.utils.pageScroll
@@ -244,10 +244,8 @@ private fun copyDiagnostics(
     bound: Boolean,
     framework: String?,
 ) {
-    val hostVersion = runCatching {
-        @Suppress("DEPRECATION")
-        context.packageManager.getPackageInfo(HOST_PACKAGE, 0).versionName
-    }.getOrNull() ?: "未安装"
+    // 读不到 ≠ 没装：Android 11+ 包可见性 / 隐藏列表类模块都会让查询抛 NameNotFoundException
+    val hostVersion = readHostVersion(context) ?: "未检测到（可能未安装或读取被限制）"
 
     val text = buildString {
         appendLine("模块版本：$version")

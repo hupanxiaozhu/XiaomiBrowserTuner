@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.15.8 (versionCode 47) —— 修「已装宿主显示为未安装」
+
+### 修复
+
+- **功能页顶部把已安装的小米浏览器显示成「未安装」**。问题不在检测逻辑，而在 `AndroidManifest.xml`
+  少了一条 **包可见性**声明：本模块 `targetSdk 34`，从 Android 11 起系统会按「包可见性」过滤
+  `PackageManager#getPackageInfo` —— manifest 里没在 `<queries>` 声明过的包一律看不见，抛
+  `NameNotFoundException`，而读取处用 `runCatching` 吞掉异常后回落到「未安装」。
+
+  这也是为什么**功能本身一直是好的**：LSPosed 的 hook 与 DEX 加载都不走 `PackageManager`，
+  只有模块进程里查别的应用会中招。
+
+  - `AndroidManifest.xml` 补 `<queries><package android:name="com.android.browser" /></queries>`；
+  - 文案不再直接断言「未安装」：查不到时显示「小米浏览器 未检测到」+
+    「可能未安装，也可能是系统限制了模块查看其它应用（不影响功能生效）」；
+  - 诊断页的「已装宿主」同样按「未检测到（可能未安装或读取被限制）」输出；
+  - 两处重复的宿主版本读取抽成 `readHostVersion()`，状态卡原来的 `remember {}` 改为按 `context` 记账。
+
+### 说明
+
+- 隐藏应用列表（HMA）这类模块会在**应用侧**再过滤一层 `PackageManager`，那种情况下声明
+  `<queries>` 也挡不住 —— 所以文案不把话说死，遇到仍报「未检测到」的用户，先确认他是否装了
+  这类模块并把本模块从它的作用域里移除。
+
+### 致谢
+
+- 问题由 **QQ 用户 ai** 与 **酷安用户 @XiaoluZhou** 反馈。
+
 ## 1.15.7 (versionCode 46) —— 新增「主页滚动回弹」开关
 
 ### 新增
