@@ -4,6 +4,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.hupan.hookbrowser.ModuleService
+import com.hupan.hookbrowser.adblock.AdRuleStore
+import com.hupan.hookbrowser.adblock.BuiltinRuleSet
+import com.hupan.hookbrowser.adblock.RuleUpdater
 import com.hupan.hookbrowser.ui.UpdateState
 import com.hupan.hookbrowser.ui.navigation.AppNavigation
 import com.hupan.hookbrowser.ui.page.ToggleState
@@ -36,6 +39,24 @@ class MainActivity : ComponentActivity() {
         // 必须早于任何开关读写：写完本地 SP 后要靠框架服务把它镜像进框架数据库，
         // 宿主进程（Config）读的是那份数据。晚一步就会出现「改了不生效」。
         ModuleService.bind(applicationContext)
+        // 1.15.10：1.15.9 及更早写下的规则库是未压缩格式，直接推送会撞 Binder 事务上限
+        // （见 AdRuleStore.repack）。只在旧格式时动手，且读 + 压缩 + 写都是阻塞 I/O，
+        // 所以丢到后台线程 —— 升级后只要打开一次设置界面，规则库就自动修好。
+        //
+        // 1.15.13：同一条线程上接着做两件事 ——
+        //   ① 按「内置推荐规则」开关把内置规则集装上 / 移除（版本变了会自动替换）；
+        //   ② 触发一次规则自动更新（24 小时节流、失败静默都在 RuleUpdater 里）。
+        //   模块进程不常驻，**打开本应用是唯一可靠的触发点**，所以这两步只能挂在这里；
+        //   界面上也照实写了出来，不让用户以为它是后台常驻任务。
+        //   顺序不能反：repack 先把旧格式修好，后面两步才写到正确的格式上。
+        Thread {
+            runCatching { AdRuleStore.repack(applicationContext) }
+            runCatching { BuiltinRuleSet.sync(applicationContext) }
+            runCatching { RuleUpdater.maybeAutoUpdate(applicationContext) }
+        }.apply {
+            isDaemon = true
+            name = "hb-rule-boot"
+        }.start()
         // 开关装载从 MainPage 的 `remember { }` 里提到这里：那块会在**组合期**读
         // SharedPreferences（主线程磁盘 IO）并写 snapshot state。放这里装载一次，
         // 页面只管读 ToggleState.values / strings。

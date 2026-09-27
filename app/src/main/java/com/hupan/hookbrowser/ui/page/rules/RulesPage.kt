@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import com.hupan.hookbrowser.Config
+import com.hupan.hookbrowser.adblock.BuiltinRuleSet
 import com.hupan.hookbrowser.ui.Detail
 import com.hupan.hookbrowser.ui.DsRadius
 import com.hupan.hookbrowser.ui.DsSpace
@@ -49,7 +50,9 @@ import com.hupan.hookbrowser.ui.navigation.Route
 import com.hupan.hookbrowser.ui.page.MainTab
 import com.hupan.hookbrowser.ui.utils.pageContentPadding
 import com.hupan.hookbrowser.ui.utils.pageScroll
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -103,7 +106,26 @@ internal fun RulesPage(
                     summary = toggle.summary,
                     checked = values[toggle.key] ?: toggle.default,
                     enabled = masterOn,
-                    onCheckedChange = { onUpdate(toggle.key, it) },
+                    onCheckedChange = { checked ->
+                        onUpdate(toggle.key, checked)
+                        // 「内置推荐规则」不是纯开关：落盘后还要把 2.8 万条规则装上 / 移除。
+                        // 挂在这一侧（而不是只靠打开应用时那次同步），用户点完几秒内就能在
+                        // 下面的「规则管理」里看到它出现 / 消失；sync 幂等，重复触发无害。
+                        if (toggle.key == Config.AD_BUILTIN_RULES) {
+                            // 刻意用**独立**的 IO 作用域而不是 rememberCoroutineScope：
+                            // 切 Tab 会让本页离开组合、那个作用域随之被取消，而这一步要解析
+                            // 2.8 万条再落盘，被腰斩在中间最难受。sync 幂等，重复触发无害。
+                            CoroutineScope(Dispatchers.IO).launch {
+                                val msg = runCatching { BuiltinRuleSet.sync(context) }.getOrDefault("")
+                                if (msg.isNotEmpty()) {
+                                    withContext(Dispatchers.Main) {
+                                        libraryToast(context, msg)
+                                        RuleLibraryState.bump()
+                                    }
+                                }
+                            }
+                        }
+                    },
                     onShowDetail = { onShowDetail(toggle.key, toggle.title, toggle.detail) },
                 )
             }

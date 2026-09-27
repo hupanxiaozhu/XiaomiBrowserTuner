@@ -10,6 +10,7 @@ import com.hupan.hookbrowser.adblock.AdRuleChannel
 import com.hupan.hookbrowser.adblock.AdRuleCodec
 import com.hupan.hookbrowser.adblock.AdRuleEngine
 import com.hupan.hookbrowser.adblock.AdRuleParser
+import com.hupan.hookbrowser.adblock.BuiltinElementRules
 import com.hupan.hookbrowser.adblock.HostAdRules
 import com.hupan.hookbrowser.webpage.PageConsumer
 import com.hupan.hookbrowser.webpage.PageInjection
@@ -39,6 +40,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * 所以 `##` 规则走另一条路：编译成一段 CSS（见 [AdElementCss]），在 `onPageFinished`
  * 里通过 `evaluateJavascript` 注入 `<style>`。CSS 是声明式的，插一次就长期生效，
  * 首屏渲染和后续 SPA 动态插入的广告节点都会自动被隐藏。
+ *
+ * 1.15.11 起注入的是**按页面 host 预筛**过的脚本（原来每页 inject 全量域名桶，几百 KB），
+ * 并额外并上一份内置的通用类名规则（[BuiltinElementRules]）—— 宿主下发的那批 `##` 只覆盖
+ * 长尾站点，标准广告类名一条都没有。
  *
  * ## 第三条通道：宿主自带的规则库（1.9.1 起）
  *
@@ -97,15 +102,24 @@ internal object CustomAdBlockFeature : Feature(Config.AD_CUSTOM_RULES) {
     /** 每多少次请求汇总一行【采样】诊断日志 */
     private const val LOG_CALL_EVERY = 200
 
+    /**
+     * 内置规则集的 source 前缀（对应 `adblock/BuiltinRuleSet.SOURCE_PREFIX`）。
+     *
+     * 刻意写成本地字面量而不是引用那个对象：`BuiltinRuleSet` 会读模块自己的 `assets/`，
+     * **只能在模块进程调用**，而本类是宿主进程的 hook —— 少留一条能被人误用的引用路径。
+     * 只用来在日志里标出「内置推荐规则装上了没」。
+     */
+    private const val BUILTIN_SOURCE_HINT = "builtin:recommended"
+
     private val EMPTY_BODY = ByteArray(0)
 
     /** 当前生效的规则引擎；未加载 / 开关关闭时为 null，回调直接 no-op */
     @Volatile
     private var engine: AdRuleEngine? = null
 
-    /** 当前生效的元素隐藏注入脚本（空串 = 没有元素隐藏规则，注入回调直接 return） */
+    /** 当前生效的元素隐藏规则（null = 未加载 / 开关关闭，注入回调直接 return） */
     @Volatile
-    private var cssJs: String = ""
+    private var elements: AdElementCss.Compiled? = null
 
     /**
      * 上次编译用的**输入指纹**：用户规则库 JSON + 宿主内置规则的条数。
@@ -140,7 +154,7 @@ internal object CustomAdBlockFeature : Feature(Config.AD_CUSTOM_RULES) {
         PageInjection.register(object : PageConsumer {
             override fun active(): Boolean = on()
             override fun onClientClass(cls: Class<*>) = hookClient(cls)
-            override fun onPageFinished(view: Any, url: String?) = injectCss(view)
+            override fun onPageFinished(view: Any, url: String?) = injectCss(view, url)
         })
         PageInjection.install(cl)
         hookBaseClient(cl)
@@ -170,9 +184,16 @@ internal object CustomAdBlockFeature : Feature(Config.AD_CUSTOM_RULES) {
     /**
      * 把元素隐藏 CSS 注入页面（onPageFinished 由 [PageInjection] 回调，主线程）。
      * 没规则 / 没有 `evaluateJavascript` 都静默跳过。
+     *
+     * 1.15.11：按页面 URL 的 host **现拼**脚本（见 [AdElementCss.Compiled.scriptFor]）——
+     * 原来是把所有域名桶编进一段全量 JS 靠页面自己匹配，一份中文规则集就是 385 KB 每页；
+     * 现在只带全局桶 + 命中该 host 的桶。`onPageFinished` 的第二个参数本来就带着 URL，
+     * 之前被丢掉了。
      */
-    private fun injectCss(view: Any) {
-        val js = cssJs
+    private fun injectCss(view: Any, url: String?) {
+        val c = elements ?: return
+        if (c.isEmpty) return
+        val js = c.scriptFor(url)
         if (js.isEmpty()) return
         if (!PageInjection.injectJs(view, js)) {
             XLog.v("【元素隐藏】注入失败：${view.javaClass.simpleName}")
@@ -351,7 +372,7 @@ internal object CustomAdBlockFeature : Feature(Config.AD_CUSTOM_RULES) {
         if (!on()) {
             if (engine != null) {
                 engine = null
-                cssJs = ""
+                elements = null
                 loadedStamp = ""
                 XLog.i("自定义拦截规则已关闭（总开关或功能开关其中之一）")
             }
@@ -389,19 +410,28 @@ internal object CustomAdBlockFeature : Feature(Config.AD_CUSTOM_RULES) {
         val compiled = if (rules.isEmpty()) AdRuleEngine.EMPTY else AdRuleEngine.compile(rules)
         engine = compiled
 
-        // 元素隐藏规则 → 注入脚本。与 URL 引擎分开编译：两者的生效通道完全不同
-        val elements = userElements + hostElements
-        val css = if (elements.isEmpty()) AdElementCss.EMPTY else AdElementCss.compile(elements)
-        cssJs = css.js
+        // 元素隐藏规则 → 注入脚本。与 URL 引擎分开编译：两者的生效通道完全不同。
+        //
+        // 1.15.11：末尾并上 [BuiltinElementRules]（通用类名：`.ad-container` / `.adsbygoogle` /
+        // `[id^="div-gpt-ad"]` 等）。宿主下发的那 1,533 条 `##` 全是长尾站点专用（博彩 / 悬浮 /
+        // 小说站），标准类名的广告位一条都覆盖不到 —— 不内置的话，用户不导规则时
+        // 「隐藏 N 条」看着有数、页面上的广告一个不少。
+        val elementRules = userElements + hostElements + BuiltinElementRules.ALL
+        val css = AdElementCss.compile(elementRules)
+        elements = css
 
         if (sets.isEmpty() && host.isEmpty()) {
             XLog.i("【规则】规则库为空，未导入或宿主读不到：${AdRuleChannel.describeOnce()}")
         } else {
+            // 标出内置推荐规则集在不在 —— 它是「规则库里有数但界面没变化」这类问题的第一个怀疑对象
+            val srcTag =
+                if (sets.any { it.source.startsWith(BUILTIN_SOURCE_HINT) }) "，含内置推荐规则" else ""
             XLog.i(
-                "【规则】用户 ${sets.size} 组（启用 ${sets.count { it.enabled }} 组）：" +
+                "【规则】用户 ${sets.size} 组（启用 ${sets.count { it.enabled }} 组$srcTag）：" +
                     "URL ${userRules.size} + 隐藏 ${userElements.size} 条；" +
                     "宿主内置 ${host.size} 条（${host.size - hostPlain.size} 条带 \$ 选项交给 native）" +
                     " → 分流 URL ${hostRules.size} + 隐藏 ${hostElements.size} 条；" +
+                    "另加内置通用隐藏 ${BuiltinElementRules.ALL.size} 条；" +
                     "合计生效 URL ${compiled.ruleCount} 条（超限丢弃 ${compiled.droppedCount}）、" +
                     "隐藏 ${css.total} 条（全局 ${css.globalCount} / 限定 ${css.scopedCount}，" +
                     "超限丢弃 ${css.dropped}）"

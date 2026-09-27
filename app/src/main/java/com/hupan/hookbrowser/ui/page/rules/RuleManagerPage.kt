@@ -67,6 +67,8 @@ import com.hupan.hookbrowser.XLog
 import com.hupan.hookbrowser.adblock.AdRuleParser
 import com.hupan.hookbrowser.adblock.AdRuleSet
 import com.hupan.hookbrowser.adblock.AdRuleStore
+import com.hupan.hookbrowser.adblock.BuiltinRuleSet
+import com.hupan.hookbrowser.adblock.RuleUpdater
 import com.hupan.hookbrowser.ui.DsColor
 import com.hupan.hookbrowser.ui.DsElevation
 import com.hupan.hookbrowser.ui.DsRadius
@@ -92,8 +94,6 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.UUID
 
 @Composable
@@ -106,8 +106,10 @@ internal fun RuleManagerPage() {
 
     var sets by remember { mutableStateOf<List<AdRuleSet>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
-    /** 正在下载 / 导入：期间禁用两个导入入口，避免并发写同一个规则库 */
+    /** 正在下载 / 导入 / 更新：期间禁用所有入口，避免并发写同一个规则库 */
     var busy by remember { mutableStateOf(false) }
+    /** 上次自动更新的时间（0 = 从未）。自动更新跑在打开应用那一刻，这里只做展示 */
+    var lastAutoAt by remember { mutableStateOf(0L) }
 
     var urlDialog by remember { mutableStateOf(false) }
     var detailTarget by remember { mutableStateOf<AdRuleSet?>(null) }
@@ -116,6 +118,7 @@ internal fun RuleManagerPage() {
     // 首次进入读一次规则库（IO 线程，见 readLibrary）
     LaunchedEffect(Unit) {
         sets = readLibrary(context)
+        lastAutoAt = withContext(Dispatchers.IO) { RuleUpdater.lastAutoAt(context) }
         loaded = true
     }
 
@@ -123,6 +126,7 @@ internal fun RuleManagerPage() {
     suspend fun afterChange(message: String) {
         toast(context, message)
         sets = readLibrary(context)
+        lastAutoAt = withContext(Dispatchers.IO) { RuleUpdater.lastAutoAt(context) }
         RuleLibraryState.bump()
     }
 
@@ -132,11 +136,11 @@ internal fun RuleManagerPage() {
             busy = true
             scope.launch {
                 val name = displayName(context, uri)
-                val text = readText(context, uri)
+                val (text, truncated) = readText(context, uri)
                 val msg = if (text == null) {
                     "导入失败：无法读取该文件"
                 } else {
-                    importText(context, name, "file:$name", text)
+                    importText(context, name, "file:$name", text, truncated)
                 }
                 busy = false
                 afterChange(msg)
@@ -182,6 +186,25 @@ internal fun RuleManagerPage() {
                     )
                 }
 
+                item {
+                    UpdateCard(
+                        sets = sets,
+                        busy = busy,
+                        lastAutoAt = lastAutoAt,
+                        onUpdateAll = {
+                            busy = true
+                            scope.launch {
+                                val outcomes = runCatching { RuleUpdater.updateAll(context) }
+                                    .getOrElse {
+                                        listOf(RuleUpdater.Outcome("", false, it.message ?: "未知错误"))
+                                    }
+                                busy = false
+                                afterChange(summarizeUpdates(outcomes))
+                            }
+                        },
+                    )
+                }
+
                 if (!loaded) {
                     item { LibraryNoteCard("正在读取规则库…", "") }
                 } else if (sets.isEmpty()) {
@@ -195,10 +218,26 @@ internal fun RuleManagerPage() {
                     items(items = sets, key = { it.id }) { set ->
                         RuleSetCard(
                             set = set,
+                            builtin = BuiltinRuleSet.isBuiltin(set),
+                            updatable = RuleUpdater.isUpdatable(set.source),
                             onToggle = { enabled ->
                                 scope.launch {
                                     setEnabled(context, set, enabled)
                                     afterChange("已保存，浏览器将在数秒内生效")
+                                }
+                            },
+                            onUpdate = {
+                                busy = true
+                                scope.launch {
+                                    val o = runCatching { RuleUpdater.updateOne(context, set.id) }
+                                        .getOrElse {
+                                            RuleUpdater.Outcome(set.name, false, it.message ?: "未知错误")
+                                        }
+                                    busy = false
+                                    afterChange(
+                                        if (o.ok) "「${o.name}」已更新：${o.message}"
+                                        else "更新失败：${o.message}"
+                                    )
                                 }
                             },
                             onView = { detailTarget = set },
@@ -215,11 +254,12 @@ internal fun RuleManagerPage() {
                     urlDialog = false
                     busy = true
                     scope.launch {
-                        val (text, err) = fetchText(url)
+                        val fetched = RuleUpdater.fetch(url)
+                        val text = fetched.text
                         val msg = if (text == null) {
-                            "导入失败：$err"
+                            "导入失败：${fetched.error}"
                         } else {
-                            importText(context, nameOfUrl(url), url, text)
+                            importText(context, nameOfUrl(url), url, text, fetched.truncated)
                         }
                         busy = false
                         afterChange(msg)
@@ -308,11 +348,22 @@ private fun ImportCard(
     }
 }
 
-/** 一个规则集：名称 + 元信息 + 启用开关，下面一行「查看 / 删除」。 */
+/**
+ * 一个规则集：名称 + 元信息 + 启用开关，下面一行「查看 / 更新 / 删除」。
+ *
+ * 两个按钮是有条件出现的：
+ * - **「更新」**只对「从 URL 导入」的组出现（[RuleUpdater.isUpdatable]）——
+ *   本地文件与内置规则集没有可以重新下载的来源；
+ * - **「删除」**对内置规则集不出现 —— 它由「规则」Tab 的开关控制，单独删掉的话
+ *   下次打开应用又会被装回来，「删了又回来」比不给按钮更让人困惑。
+ */
 @Composable
 private fun RuleSetCard(
     set: AdRuleSet,
+    builtin: Boolean,
+    updatable: Boolean,
     onToggle: (Boolean) -> Unit,
+    onUpdate: () -> Unit,
     onView: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -350,7 +401,63 @@ private fun RuleSetCard(
             horizontalArrangement = Arrangement.spacedBy(DsSpace.md, Alignment.End),
         ) {
             TextButton(text = "查看", onClick = onView)
-            TextButton(text = "删除", onClick = onDelete)
+            if (updatable) TextButton(text = "更新", onClick = onUpdate)
+            if (!builtin) TextButton(text = "删除", onClick = onDelete)
+        }
+    }
+}
+
+/**
+ * 更新卡：有几个可更新的规则集、上次自动更新时间、以及「立即全部更新」。
+ *
+ * <p>空态不给按钮（而不是给一个灰按钮）—— 没有 URL 来源时那个按钮永远是禁用的，
+ * 不如直接告诉用户为什么。
+ */
+@Composable
+private fun UpdateCard(
+    sets: List<AdRuleSet>,
+    busy: Boolean,
+    lastAutoAt: Long,
+    onUpdateAll: () -> Unit,
+) {
+    val scheme = MiuixTheme.colorScheme
+    val updatable = sets.count { RuleUpdater.isUpdatable(it.source) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(scheme.surfaceContainer, RoundedCornerShape(DsRadius.card))
+            .padding(horizontal = DsSpace.cardPadH, vertical = DsSpace.cardPadV),
+    ) {
+        Text(
+            text = "规则更新",
+            fontSize = DsType.title,
+            fontWeight = FontWeight.SemiBold,
+            color = scheme.onSurface,
+        )
+        Text(
+            text = if (updatable == 0) {
+                "还没有从 URL 导入的规则集 —— 只有 URL 来源能重新下载。" +
+                    "本地文件导入的规则集需要在来源改版后手动重导；内置规则集随模块版本更新。"
+            } else {
+                "$updatable 个规则集可更新 · 上次自动更新：${formatTime(lastAutoAt)}"
+            },
+            fontSize = DsType.body,
+            lineHeight = DsType.lineBody,
+            color = scheme.onBackgroundVariant,
+            modifier = Modifier.padding(top = DsSpace.sm),
+        )
+        if (updatable > 0) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = DsSpace.md),
+                horizontalArrangement = Arrangement.spacedBy(DsSpace.md, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (busy) {
+                    Text(text = "正在下载并更新…", fontSize = DsType.body, color = scheme.primary)
+                } else {
+                    TextButton(text = "立即全部更新", onClick = onUpdateAll)
+                }
+            }
         }
     }
 }
@@ -579,9 +686,23 @@ private suspend fun remove(context: Context, set: AdRuleSet) {
     XLog.i("删除规则集「${set.name}」（${set.rules.size} 条）")
 }
 
-/** 读本地文件（SAF uri）的文本内容；读不到返回 null。 */
-private suspend fun readText(context: Context, uri: Uri): String? =
-    readSafText(context, uri, MAX_FILE_BYTES)
+/**
+ * 读本地文件（SAF uri）。返回 `(正文, 是否被体积上限截断)`，读不到时正文为 null。
+ *
+ * 不复用 [readSafText] 是因为需要那个「被截断」标志：一个字面量 2 MB 的规则文件被悄悄截到
+ * 上限以内，界面上完全看不出来，而截断意味着用户少了一大半规则 ——
+ * 1.15.12 之前那个 512 KB 的上限就是这么让 anti-AD 静默丢掉 77% 的。
+ */
+private suspend fun readText(context: Context, uri: Uri): Pair<String?, Boolean> =
+    withContext(Dispatchers.IO) {
+        runCatching {
+            context.contentResolver.openInputStream(uri)?.use { ins ->
+                val bytes = ins.readBytes()
+                val cut = bytes.size.coerceAtMost(RuleUpdater.MAX_FILE_BYTES)
+                String(bytes, 0, cut, Charsets.UTF_8) to (bytes.size > cut)
+            }
+        }.getOrNull() ?: (null to false)
+    }
 
 /**
  * 解析 + 落盘。规则集按**来源**去重：同一个 URL / 文件重复导入是覆盖，不是堆积。
@@ -593,6 +714,8 @@ private suspend fun importText(
     name: String,
     source: String,
     text: String,
+    /** 源文件是否被体积上限截断（截断要说出来，不能只体现在条数上） */
+    truncated: Boolean = false,
 ): String = withContext(Dispatchers.IO) {
     val result = AdRuleParser.parse(text)
     if (result.rules.isEmpty() && result.elementRules.isEmpty()) {
@@ -615,10 +738,11 @@ private suspend fun importText(
     if (!AdRuleStore.save(context, all)) {
         return@withContext "导入失败：规则库写入失败"
     }
-    val skipped = if (result.invalidLines > 0 || result.truncatedLines > 0) {
-        "（另有 ${result.invalidLines} 条不合规、${result.truncatedLines} 条超限被丢弃）"
-    } else {
-        ""
+    val skipped = buildString {
+        if (result.invalidLines > 0 || result.truncatedLines > 0) {
+            append("（另有 ${result.invalidLines} 条不合规、${result.truncatedLines} 条超限被丢弃）")
+        }
+        if (truncated) append("（⚠ 源文件超过 8 MB，只读了前 8 MB）")
     }
     XLog.i(
         "导入规则集「$name」：请求拦截 ${result.rules.size} 条 / 元素隐藏 ${result.elementRules.size} 条" +
@@ -628,29 +752,24 @@ private suspend fun importText(
 }
 
 /**
- * 下载规则文本。返回 `(正文, 错误描述)`，二选一为 null。
+ * 「立即全部更新」的结果汇总成一句话。
  *
- * 用 `runCatching` 而不是 try/catch 给同一个 val 赋值 —— Kotlin 的确定赋值分析不覆盖
- * try/catch，那样写会报 `Val cannot be reassigned`（这个坑工程里踩过，见 verify_static.py 第 8 项）。
+ * 单个规则集时说得具体（成功给条数、失败给原因）；多个时只给成功计数 + 失败原因，
+ * 否则长列表会把 toast 撑成一段读不完的话。
  */
-private suspend fun fetchText(url: String): Pair<String?, String> = withContext(Dispatchers.IO) {
-    runCatching<Pair<String?, String>> {
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = CONNECT_TIMEOUT_MS
-            readTimeout = READ_TIMEOUT_MS
-            instanceFollowRedirects = true
-            setRequestProperty("User-Agent", UA)
-        }
-        try {
-            val code = conn.responseCode
-            if (code !in 200..299) throw IllegalStateException("HTTP $code")
-            val bytes = conn.inputStream.use { it.readBytes() }
-            val cut = bytes.size.coerceAtMost(MAX_FILE_BYTES)
-            String(bytes, 0, cut, Charsets.UTF_8) to ""
-        } finally {
-            runCatching { conn.disconnect() }
-        }
-    }.getOrElse { e -> null to (e.message ?: e.javaClass.simpleName) }
+private fun summarizeUpdates(outcomes: List<RuleUpdater.Outcome>): String {
+    if (outcomes.isEmpty()) return "没有可更新的规则集"
+    val single = outcomes.singleOrNull()
+    if (single != null) {
+        return if (single.ok) "已更新：${single.message}" else "更新失败：${single.message}"
+    }
+    val ok = outcomes.count { it.ok }
+    val failed = outcomes.filterNot { it.ok }
+    return if (failed.isEmpty()) {
+        "已更新 $ok / ${outcomes.size} 个规则集"
+    } else {
+        "已更新 $ok / ${outcomes.size} 个；失败：${failed.joinToString("；") { it.message }}"
+    }
 }
 
 /** 「查看」浮层的正文：两类规则各列前 [MAX_SHOW_RULES] 条，超出部分只报数。 */
@@ -682,12 +801,10 @@ private fun displayName(context: Context, uri: Uri): String =
 
 private fun toast(context: Context, msg: String) = libraryToast(context, msg)
 
-/** 单份规则文本的读取上限：超出部分截断（规则条数另受 AdRuleParser.MAX_RULES 约束） */
-private const val MAX_FILE_BYTES = 512 * 1024
-
-/** 「查看」浮层每类最多列多少条 */
+/**
+ * 「查看」浮层每类最多列多少条。
+ *
+ * 下载、体积上限与超时都收在 [RuleUpdater] 里了（手动导入与自动更新走同一条下载实现，
+ * 免得两处行为不一致 —— 1.15.12 之前这里还各有一份 512 KB 的上限常量）。
+ */
 private const val MAX_SHOW_RULES = 300
-
-private const val CONNECT_TIMEOUT_MS = 15000
-private const val READ_TIMEOUT_MS = 20000
-private const val UA = "Mozilla/5.0 (Linux; Android) HookBrowser"

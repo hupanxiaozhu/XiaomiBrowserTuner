@@ -116,22 +116,34 @@ internal class AdRuleEngine private constructor(
         private const val MAX_URL_LEN = 4096
 
         /**
-         * 三桶上限（1.9.1 集体放宽）。
+         * 三桶上限。
+         *
+         * ## 1.9.1：集体放宽
          *
          * 起因：真机上「导入界面显示 5000 条拦截」= 撞在解析层的上限，放宽解析层后
          * 这三道闸会接着丢 —— 中文规则集里带路径 / 通配的规则全进正则桶，原来只留 1500 条，
          * 等于放宽了也白放。
          *
-         * 代价是各不相同的，所以三个值不按同一比例涨：
-         * - 域名桶走 HashSet 后缀查，几万条也只是几次哈希 → 放最宽；
+         * ## 1.15.12：按「整份社区规则集装得下」重新定值
+         *
+         * 实测 anti-AD 全量 + chinablock 并集、去重后的桶需求是
+         * **域名 101,498 / 子串 1,124 / 正则 6,752**。旧值 40000 / 8000 / 6000 会丢掉
+         * 六万条域名和 752 条正则 —— 而桶满时丢的是**排在后面的规则**（见 `compile()`：
+         * 用户规则在前、宿主规则在后），所以用户规则一多，连自己的都保不住。
+         *
+         * 代价各不相同，所以三个值不按同一比例涨：
+         * - 域名桶走 HashSet 后缀查，几万条也只是几次哈希 → 放最宽，10 万条约 12 MB；
          * - 正则桶每条都有**最长字面段预筛**（URL 里没有那段字面量就直接跳过正则），
-         *   实际开销近似一次 `contains` → 放到 6000 条（每次请求多扫约 4500 次 contains，
-         *   在百微秒量级，网络线程可接受）；
-         * - 裸串桶是**无条件线性 `contains`**，没有预筛可用，是唯一纯线性成本的桶 → 只翻一倍。
+         *   实际开销近似一次 `contains` → 12000 条时每次请求多扫约 6000 次 contains，
+         *   在百微秒量级、网络线程可接受，内存约 8 MB；
+         * - 裸串桶是**无条件线性 `contains`**，没有预筛可用，是唯一纯线性成本的桶 →
+         *   维持 8000（实测社区规则集只用得到 1,124 条，富余）。
+         *
+         * 三者合计 140,000，与 [AdRuleParser.MAX_RULES] 对齐。
          */
-        private const val MAX_DOMAINS = 40000
+        private const val MAX_DOMAINS = 120000
         private const val MAX_PLAINS = 8000
-        private const val MAX_REGEXES = 6000
+        private const val MAX_REGEXES = 12000
 
         private const val META = ".^$*+?()[]{}|\\"
 
@@ -153,7 +165,15 @@ internal class AdRuleEngine private constructor(
             var used = 0
             var dropped = 0
 
+            // 逐条去重（按规则原文）。解析层只在**一份**文本内去重，而引擎收到的常常是
+            // 好几份拼起来的（内置推荐规则集 + 用户自己导入的同类规则集必然高度重叠，
+            // 例如「内置 EasyList China + ADgk」和手动导入的 chinablock 是同一份内容）——
+            // 不去重就是白占桶容量，把排在后面的规则挤掉（桶满时丢的是后面的，见类注释）。
+            // 域名桶本身是 HashSet 天然去重，这里主要救的是正则桶。
+            val seen = HashSet<String>(rules.size * 2)
+
             for (raw in rules) {
+                if (!seen.add(raw)) continue
                 val exception = raw.startsWith("@@")
                 val body = if (exception) raw.substring(2) else raw
                 if (body.isEmpty()) continue

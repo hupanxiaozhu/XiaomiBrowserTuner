@@ -39,8 +39,8 @@ android {
         // 注入通道抽成共享件 webpage/PageInjection；其余功能与 hook 逻辑未动。
         // 1.15.8：修「功能页顶部把已装的宿主显示成『未安装』」—— manifest 缺 <queries> 包
         // 可见性声明（targetSdk 34 受 Android 11+ 包可见性过滤），补上并让文案区分「查不到」。
-        versionCode = 47
-        versionName = "1.15.8"
+        versionCode = 52
+        versionName = "1.15.13"
     }
 
     buildTypes {

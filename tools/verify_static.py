@@ -4,25 +4,31 @@
 
 检查项：
   1. 代码里 R.xxx 引用的资源是否都定义了
-  2. 功能开关目录（ui/FeatureCatalog.kt）的 app:key 与 Config.kt 常量值是否一一对应
+  2. 功能开关目录（ui/FeatureCatalog.kt）的 key 与 Config.kt 常量值是否一一对应
      （1.11.0 起开关清单不再是 res/xml/prefs.xml —— 界面改 Compose 后那份 XML 已删除）
   3. 默认值表（Config.kt DEFAULTS）与功能目录覆盖的开关是否一致
-  4. AndroidManifest.xml 引用的 @string @array @style ... 是否存在
-  5. Manifest 引用是否都能解析；manifest 里不得残留 xposed* legacy 声明
-  6. META-INF/xposed/{module.prop,java_init.list,scope.list} 与入口类、宿主包名对齐，
+  4. 字符串开关的选项表引用的常量是否存在
+  5. AndroidManifest.xml 引用的 @string @array @style ... 是否存在
+  6. Manifest 引用是否都能解析；manifest 里不得残留 xposed* legacy 声明
+  7. META-INF/xposed/{module.prop,java_init.list,scope.list} 与入口类、宿主包名对齐，
      且全工程不再出现 de.robv 旧 API 的可执行引用
-  6. Features.ALL 注册表与 features/ 下的实际文件是否一致
-  7. Kotlin 符号交叉检查：自有 object 的成员引用与本项目 import 是否都能解析
+  8. Features.ALL 注册表与 features/ 下的实际文件是否一致
+  9. Kotlin 符号交叉检查：自有 object 的成员引用与本项目 import 是否都能解析
      （专门拦「改了调用点却漏写实现」这类只会在编译期暴露的错）
-  8. try/catch 两个分支给同一个 val 赋值（`Val cannot be reassigned`）
-  9. Manifest 里声明的 Activity 是否有对应源码文件
- 10. 规则库 SP 文件名三处一致（模块进程写、宿主进程读；写错不报错，只会「导入了但不生效」）
- 11. 粗粒度语法体检：剥掉注释/字符串后 kt 的 () [] {} 是否平衡、每个 xml 能否被 ElementTree 解析
-  12. 开关目录里的每一项都登记进分区表、且都写了详情
+     ＋ try/catch 两个分支给同一个 val 赋值（`Val cannot be reassigned`）
+ 10. Manifest 里声明的 Activity 是否有对应源码文件
+ 11. 规则库跨进程的组名与每个 key 名多处一致
+     （模块进程写、宿主进程读；写错不报错，只会「导入了但不生效」或读出空表）
+ 12. 每一项开关都登记进分区表、且都写了详情
      （漏登记 = 界面上根本不显示这一项；漏详情 = 点开是空弹窗；两者都不报错）
+ 13. 内置规则资产 assets/builtin-rules.txt 的 sha1 与 BuiltinRuleSet.VERSION 一致
+     （哈希写错 → 每次打开应用都当成新版本重解析 2.8 万条并重装一遍；
+     或反过来内容换了却认不出、永远不更新。两边都不报错）
+ 14. 粗粒度语法体检：剥掉注释/字符串后 kt 的 () [] {} 是否平衡、每个 xml 能否被 ElementTree 解析
 
 用法：python tools/verify_static.py   （退出码 0 = 全部通过）
 """
+import hashlib
 import os
 import re
 import sys
@@ -384,13 +390,13 @@ for p in kt_files:
                     'try/catch 两个分支都给 `val %s` 赋值 → Val cannot be reassigned（%s）：'
                     '改成表达式 val x: T = try { … } catch { … }' % (name, where_rel(p)))
 
-# ---------- 10. Manifest 里声明的 Activity 必须有对应源码 ----------
+# ---------- 9. Manifest 里声明的 Activity 必须有对应源码 ----------
 for m in re.finditer(r'android:name="\.([\w.]+)"', man):
     rel = m.group(1).replace('.', os.sep) + '.kt'
     if not os.path.exists(os.path.join(PKG_DIR, rel)):
         problems.append('Manifest 声明了 .%s，但 %s 不存在' % (m.group(1), rel.replace(os.sep, '/')))
 
-# ---------- 11. 规则库 SP 文件名三处一致 ----------
+# ---------- 10. 规则库跨进程的 key 名多处一致 ----------
 # 模块进程写 adrules.xml、宿主进程读它，中间隔着两个进程。
 # 任何一处文件名写错都不会报错，只会「规则导入了但永远不生效」——必须静态钉死。
 def _const_str(path, name):
@@ -412,6 +418,32 @@ elif store_name != channel_name:
     problems.append('规则库组名两处不一致：AdRuleStore=%r AdRuleChannel=%r'
                     % (store_name, channel_name))
 
+# 1.15.9：规则库改成**分片**存储（框架镜像对单个 value 有 400,000 字符上限，超了整条被跳过
+# 且只在模块进程 logcat 留一行日志）。1.15.10 又加了 KEY_VER（先 gzip 再分片，绕 Binder 1 MB 事务上限）。
+# 1.15.11 再加 KEY_GROUP_COUNT（跨组切分：一份库可能占 adrules / adrules2 / … 多个组）。
+# 这些 key 同样跨进程，写错不报错，只会让宿主拼出半截数据 → 解码失败 → 规则库静默变空。
+# 注意：正则用的是 'const val KEY = "'，不会误匹配到 KEY_VER / KEY_COUNT / KEY_CHUNK（后面接的是 '_'）。
+for _k in ('KEY', 'KEY_VER', 'KEY_COUNT', 'KEY_CHUNK', 'KEY_GROUP_COUNT'):
+    _s = _const_str(os.path.join(_adb_dir, 'AdRuleStore.kt'), _k)
+    _c = _const_str(os.path.join(_adb_dir, 'AdRuleChannel.kt'), _k)
+    if _s is None or _c is None:
+        problems.append('规则库分片 key %s 没解析出来：AdRuleStore=%r AdRuleChannel=%r'
+                        % (_k, _s, _c))
+    elif _s != _c:
+        problems.append('规则库分片 key %s 两处不一致：AdRuleStore=%r AdRuleChannel=%r'
+                        % (_k, _s, _c))
+
+# 1.15.11：首组名以 AdRulePack.GROUP_BASE 为真源（组名派生 groupName(i) 也在那里，
+# 读写两侧共用同一份实现）。两个 PREFS 常量必须与它逐字相同 —— 不一致的后果同上：宿主读空表。
+_pack_base = _const_str(os.path.join(_adb_dir, 'AdRulePack.kt'), 'GROUP_BASE')
+if _pack_base is None:
+    problems.append('AdRulePack.GROUP_BASE 没解析出来（跨组切分的组名基名）')
+else:
+    for _f, _v in (('AdRuleStore.PREFS', store_name), ('AdRuleChannel.PREFS', channel_name)):
+        if _v is not None and _v != _pack_base:
+            problems.append('规则库首组名不一致：%s=%r AdRulePack.GROUP_BASE=%r'
+                            % (_f, _v, _pack_base))
+
 # 脚本库（1.14.0）与规则库同构：模块进程写 userscripts、宿主进程读它，同款检查
 _sc_dir = os.path.join(PKG_DIR, 'scripts')
 script_store = _const_str(os.path.join(_sc_dir, 'UserScriptStore.kt'), 'PREFS')
@@ -423,7 +455,7 @@ elif script_store != script_channel:
     problems.append('脚本库组名两处不一致：UserScriptStore=%r UserScriptChannel=%r'
                     % (script_store, script_channel))
 
-# ---------- 12. 每一项开关都写了详情 ----------
+# ---------- 11. 每一项开关都写了详情 ----------
 # 1.11.0 起「点行弹详情」由 ui/FeatureCatalog.kt 的 Toggle.detail 驱动（Compose 界面的
 # 浮层读它）。少一条 = 点开是空弹窗；多一条 = 死代码。两者都不会报错，只能静态钉死。
 # 末尾的 `\n` 用来区分「数据类的定义」与「目录里的条目」：定义那行是 `class Toggle(`
@@ -433,7 +465,7 @@ if _toggle_count != _detail_count:
     problems.append('功能目录里有 %d 条开关、%d 条详情 —— 二者必须一一对应'
                     % (_toggle_count, _detail_count))
 
-# ---------- 13. 粗粒度语法体检 ----------
+# ---------- 12. 粗粒度语法体检 ----------
 # 本机没有 JDK、不跑构建，漏一个括号以前只有到 Android Studio 里才暴露。
 # 这里剥掉注释 / 字符串 / 字符字面量后检查 () [] {} 是否平衡（字符串模板里的花括号
 # 也在字符串内被一起剥掉，不影响判断），再用 ElementTree 把每个 xml 解一遍。
@@ -579,6 +611,43 @@ for _dp, _, _fs in os.walk(RES):
             ET.parse(_p)
         except Exception as _e:
             problems.append('XML 解析失败：%s（%s）' % (where_rel(_p), _e))
+
+# ---------- 13. 内置规则资产的哈希与常量一致 ----------
+# `BuiltinRuleSet.SOURCE` 把内容哈希写进 source（`builtin:recommended#<hash8>`），
+# 靠它判断「规则库里的那份是不是当前版本」。哈希写错有两种后果，都不会报错：
+#   - 比实际值"新" → 每次打开应用都重解析 2.8 万条并当成新版本覆盖一遍（白烧一轮 I/O 与推送）；
+#   - 比实际值"旧" → 内容换了却认不出，用户永远停在旧规则上。
+_asset_path = os.path.join(ROOT, 'assets', 'builtin-rules.txt')
+_builtin_kt = os.path.join(_adb_dir, 'BuiltinRuleSet.kt')
+_asset_ver = _const_str(_builtin_kt, 'VERSION')
+if not os.path.exists(_asset_path):
+    problems.append('缺少内置规则资产：assets/builtin-rules.txt')
+elif _asset_ver is None:
+    problems.append('BuiltinRuleSet.VERSION 没解析出来（内置规则的版本标识）')
+else:
+    with open(_asset_path, 'rb') as _f:
+        _actual_ver = hashlib.sha1(_f.read()).hexdigest()[:8]
+    if _asset_ver != _actual_ver:
+        problems.append(
+            '内置规则哈希不一致：BuiltinRuleSet.VERSION=%r，assets/builtin-rules.txt 实际 sha1 前 8 位=%r'
+            % (_asset_ver, _actual_ver))
+
+# ---------- 14. 字符串模板里 `$标识符` 紧跟汉字 ----------
+# Kotlin 的标识符允许 Unicode 字母，**汉字也算** —— 所以 "$verb内置规则" 会被整体解析成
+# 一个标识符 `verb内置规则`（1.15.13 真实踩过：BuiltinRuleSet.kt:130 报
+# `Unresolved reference 'verb内置规则'`），只有 "$verb 内置规则" 或 "${verb}内置规则" 才是
+# 「变量 + 中文」。结尾的中文标点（`：` `，` `】` …）不是字母，不受影响。
+# 本机不跑构建，这类错误只会在 Android Studio 里暴露，静态走查必须拦下来。
+# 只看字符串所在的行（注释已剥掉），`${...}` 写法天然不受影响。
+for _p in kt_files:
+    _src = _strip_comments(open(_p, encoding='utf-8').read())
+    for _m in re.finditer(r'\$([A-Za-z_][A-Za-z0-9_]*)([\u4e00-\u9fff]+)', _src):
+        _ln = _src[:_m.start()].count('\n') + 1
+        problems.append(
+            '字符串模板 `$%s` 后面紧跟汉字「%s」（%s:%d）—— 会被当成标识符 `%s%s` 而报 '
+            'Unresolved reference；改成 `${%s}` 或在变量后加空格'
+            % (_m.group(1), _m.group(2), where_rel(_p), _ln,
+               _m.group(1), _m.group(2), _m.group(1)))
 
 # ---------- 输出 ----------
 print('=== 开关 key 对齐 ===')

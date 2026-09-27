@@ -60,6 +60,17 @@ internal object Config {
     /** 1.9.2：用自定义规则接管宿主 native 拦截引擎（改它的规则文件），破坏性操作，默认关 */
     const val AD_HOST_OVERRIDE = "ad_host_override"
 
+    /**
+     * 1.15.13：把模块内置的推荐规则集（EasyList China + ADgk，2.8 万条）装进规则库。
+     *
+     * 读出方只有模块进程自己（`adblock/BuiltinRuleSet`）—— 它把规则写成普通规则集，
+     * 宿主照常从 `adrules` 组读，所以宿主侧不需要认这个 key。
+     */
+    const val AD_BUILTIN_RULES = "ad_builtin_rules"
+
+    /** 1.15.13：打开模块界面时自动重新下载「从 URL 导入」的规则集（24 小时至多一次） */
+    const val AD_RULE_AUTO_UPDATE = "ad_rule_auto_update"
+
     /** 1.14.0：用户脚本（油猴式 .user.js），执行的是用户自选代码，默认关 */
     const val SCRIPT_USERSCRIPTS = "script_userscripts"
     const val UI_SEARCH_ENGINE = "ui_search_engine"
@@ -100,6 +111,16 @@ internal object Config {
         // **默认 false**：这是唯一会改动宿主自身数据的开关，且做的是"换掉小米下发的规则"这种
         // 破坏性动作。用户明确要求时才开；关闭后自动从备份还原。
         AD_HOST_OVERRIDE to false,
+        // 1.15.13：内置推荐规则集（EasyList China + ADgk，2.8 万条）。**默认 false**：
+        // 它是一次「往规则库里写进 2.8 万条」的动作（约占 900 KB 规则库容量、匹配期约 12 MB 内存），
+        // 而且用户可能已经自己导入过同类规则 —— 属于「该由用户点头」而不是「默认替他决定」。
+        // 关掉时会把这组从规则库移除，不留残留。
+        AD_BUILTIN_RULES to false,
+        // 1.15.13：URL 规则集的自动更新。**默认 true**，与「检查模块更新」同构：
+        // 只对「用户自己用 URL 导入过」的规则集生效（没导入就完全无动作），
+        // 打开模块界面时触发、24 小时至多一次、失败静默、且远端内容异常时拒绝覆盖现有规则。
+        // 它不削弱宿主任何能力，所以不按「副作用开关」处理。
+        AD_RULE_AUTO_UPDATE to true,
         // 1.14.0：用户脚本。**默认 false**：脚本在页面上下文执行的是用户自选代码，
         // 能力等同网页自身；保守起步，开启前走风险确认。
         SCRIPT_USERSCRIPTS to false,

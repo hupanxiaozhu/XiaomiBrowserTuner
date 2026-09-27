@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import com.hupan.hookbrowser.adblock.AdRuleCodec
 import com.hupan.hookbrowser.adblock.AdRuleSet
 import com.hupan.hookbrowser.adblock.AdRuleStore
+import com.hupan.hookbrowser.adblock.BuiltinRuleSet
 import com.hupan.hookbrowser.scripts.UserScriptStore
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -74,19 +75,25 @@ internal fun loadSummary(context: Context): RuleSummary {
  * 列表行与「查看」浮层共用一份格式化，免得两处对同一条规则的描述不一致。
  */
 internal fun ruleMeta(set: AdRuleSet): String {
-    val time = if (set.updatedAt > 0) {
-        // SimpleDateFormat 不是线程安全的，套一层同步 —— 列表与浮层可能在不同重组里同时调
-        synchronized(META_FMT) { META_FMT.format(Date(set.updatedAt)) }
-    } else {
-        "-"
+    val time = formatTime(set.updatedAt)
+    val src = when {
+        // 内置规则集的 source 是 `builtin:recommended#<哈希>`，直接把哈希摆给用户看没有意义
+        BuiltinRuleSet.isBuiltin(set) -> "内置 · 随模块版本更新"
+        set.source.length > 56 -> set.source.take(56) + "…"
+        else -> set.source
     }
-    val src = if (set.source.length > 56) set.source.take(56) + "…" else set.source
     val counts = if (set.elementRules.isEmpty()) {
         "${set.rules.size} 条拦截"
     } else {
         "${set.rules.size} 条拦截 + ${set.elementRules.size} 条隐藏"
     }
     return "$counts · $time · $src"
+}
+
+/** 统一的时间格式化（列表行、更新卡共用；SimpleDateFormat 不是线程安全的，套一层同步） */
+internal fun formatTime(millis: Long): String {
+    if (millis <= 0) return "从未"
+    return synchronized(META_FMT) { META_FMT.format(Date(millis)) }
 }
 
 private val META_FMT = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())

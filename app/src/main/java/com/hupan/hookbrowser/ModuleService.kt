@@ -69,11 +69,13 @@ internal object ModuleService {
      * 幂等：框架明确要求「只调用一次」，而 Activity 可能因旋转重建。
      */
     fun bind(context: Context) {
-        appCtx = context.applicationContext
+        val app = context.applicationContext
+        appCtx = app
         if (!registered.compareAndSet(false, true)) return
-        // 首次连接时把三组都推一遍：用户可能是装完模块直接开浏览器，从没进过设置页
+        // 首次连接时把三组都推一遍：用户可能是装完模块直接开浏览器，从没进过设置页。
+        // 规则库 1.15.11 起可能跨多组（adrules / adrules2 / …），要按实际组数整组补推。
         pending.add(Config.PREFS_NAME)
-        pending.add(AdRuleStore.PREFS)
+        pending.addAll(AdRuleStore.groupNames(app))
         pending.add(UserScriptStore.PREFS)
         runCatching {
             XposedServiceHelper.registerListener(object : XposedServiceHelper.OnServiceListener {
