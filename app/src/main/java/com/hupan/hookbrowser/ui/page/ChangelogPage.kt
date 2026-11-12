@@ -15,11 +15,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.hupan.hookbrowser.ui.CHANGELOGS
 import com.hupan.hookbrowser.ui.ChangelogCard
 import com.hupan.hookbrowser.ui.DsSpace
+import com.hupan.hookbrowser.ui.LOG_DISPLAY_COUNT
 import com.hupan.hookbrowser.ui.navigation.LocalNavigator
 import com.hupan.hookbrowser.ui.utils.pageContentPadding
 import com.hupan.hookbrowser.ui.utils.pageScroll
@@ -34,6 +36,7 @@ import top.yukonga.miuix.kmp.icon.extended.Back
 @Composable
 internal fun ChangelogPage() {
     val navigator = LocalNavigator.current
+    val logs = remember { CHANGELOGS.take(LOG_DISPLAY_COUNT) }
     val scrollBehavior = MiuixScrollBehavior()
     val listState = rememberLazyListState()
 
@@ -41,7 +44,7 @@ internal fun ChangelogPage() {
         topBar = {
             TopAppBar(
                 title = "更新日志",
-                subtitle = "共 ${CHANGELOGS.size} 个版本",
+                subtitle = "最近 ${logs.size} 个版本",
                 scrollBehavior = scrollBehavior,
                 navigationIcon = {
                     IconButton(onClick = { navigator.pop() }) {
@@ -64,7 +67,7 @@ internal fun ChangelogPage() {
             ) {
                 // 必须给 key：折叠状态记在条目内部（ChangelogCard 里的 remember），
                 // 列表回收复用时不带 key 会把某个版本的展开态搬到另一个版本上
-                itemsIndexed(items = CHANGELOGS, key = { _, entry -> entry.version }) { index, entry ->
+                itemsIndexed(items = logs, key = { _, entry -> entry.version }) { index, entry ->
                     ChangelogCard(
                         entry = entry,
                         current = index == 0,

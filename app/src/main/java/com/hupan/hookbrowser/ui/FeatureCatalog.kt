@@ -30,7 +30,29 @@ import com.hupan.hookbrowser.features.UaBuilder
 
 /** 宿主包名与模块适配的宿主版本（关于页 / 状态卡展示用） */
 internal const val HOST_PACKAGE = "com.android.browser"
-internal const val HOST_VERSION_NAME = "20.27.1010901"
+/** 当前核对基线（20.32.1011110 / versionCode 203210100）。 */
+internal const val HOST_VERSION_NAME = "20.32.1011110"
+
+/** 适配区间文案：只看版本线（20.xx），第三段构建号不参与判断。 */
+internal const val HOST_VERSION_RANGE = "20.27 – 20.32"
+
+/**
+ * 适配区间上下限（次版本号）。
+ *
+ * <p>20.27 是全部 hook 目标首次逐个核对通过的版本，20.32 是当前基线。这中间宿主播版只换
+ * 构建号、加功能，目标类名没动过（20.32.1011110 上复核 29 个类描述符，全部命中）。
+ * 拿完整 versionName 做等值比较，会把「明明能用」的新版本判成不匹配 —— 状态卡一片红。
+ */
+internal const val HOST_VERSION_MIN_LINE = 27
+internal const val HOST_VERSION_MAX_LINE = 32
+
+/** 宿主版本是否在已核对区间内：`20.a.b` 且 a ∈ [MIN, MAX]；解析失败算不匹配。 */
+internal fun hostVersionSupported(version: String?): Boolean {
+    val parts = version?.split('.') ?: return false
+    if (parts.size < 3 || parts[0] != "20") return false
+    val line = parts[1].toIntOrNull() ?: return false
+    return line in HOST_VERSION_MIN_LINE..HOST_VERSION_MAX_LINE
+}
 
 // ---------------------------------------------------------------------------
 // 一个可独立开关的功能项
@@ -64,7 +86,7 @@ internal class OptionItem(val key: String, val label: String)
  * <p>界面顺序 = 展示顺序。默认值一律取自 [Config.defaultOf]（与 `Config.DEFAULTS` 同一份
  * 真源），不在这里写第二遍 —— 省得「设置页显示默认开、宿主侧按 false 走」。
  *
- * <p>分区归属见下面的 [AD_TOGGLES] / [UI_TOGGLES] / [RULES_TOGGLES] / [ADVANCED_TOGGLES]。
+ * <p>分区归属见下面的 [AD_TOGGLES] / [UI_TOGGLES] / [ADVANCED_TOGGLES]。
  */
 internal val FUNCTION_TOGGLES = listOf(
     Toggle(
@@ -234,101 +256,6 @@ internal val FUNCTION_TOGGLES = listOf(
         ),
     ),
     Toggle(
-        key = Config.AD_CUSTOM_RULES,
-        title = "自定义拦截规则",
-        summary = "按导入的规则过滤：URL 拦截 + 元素隐藏",
-        default = Config.defaultOf(Config.AD_CUSTOM_RULES),
-        detail = Detail(
-            purpose = "用你自己导入的 Adblock 规则过滤资源：URL 拦截 + 元素隐藏两条通道。",
-            target = "URL 那一半挂在 hyper.webkit.WebViewClient#shouldInterceptRequest 上" +
-                "（外加 setWebViewClient 动态捕获每个 client 类 + 基类兜底）；" +
-                "元素隐藏那一半（## 规则）走页内 CSS 注入。",
-            effect = "规则库为空时 URL 引擎是 no-op，行为与没装模块一致；" +
-                "元素隐藏那条通道另有一份**内置的通用类名规则**（.ad-container / .adsbygoogle / " +
-                "[id^=\"div-gpt-ad\"] 这类标准广告位），装上即生效、不用导入任何东西。" +
-                "导入的规则数秒内自动生效，不用重启浏览器。",
-            caveat = "三套 WebView 内核（hyper / miui / baidu）共用同一条拦截链；" +
-                "规则集改版后需要重新导入一次。" +
-                "单次导入上限 140,000 条 URL 规则 + 15,000 条元素隐藏规则，超出部分会被截断。" +
-                "规则库会压缩后跨组存储，总容量不再受单个上限约束。",
-        ),
-    ),
-    Toggle(
-        key = Config.AD_HOST_OVERRIDE,
-        title = "接管宿主拦截引擎",
-        summary = "⚠ 用你的规则替换宿主 native 规则库",
-        default = Config.defaultOf(Config.AD_HOST_OVERRIDE),
-        detail = Detail(
-            purpose = "不只是模块自己拦，而是把宿主 native 引擎的规则库换成你导入的规则。",
-            target = "hook 宿主的规则写入通道 AdBlockHelper\$Updator#updateRuleList、" +
-                "AdBlockDataUpdator#{writeJSONFile, updateAdBlackist, update}，" +
-                "覆盖 files/data/adblock/miui_blacklist.json 并清空它的白名单，" +
-                "最后调 MiuiStatics#notifyAdBlockUpdateConfig() 让它立即重载。",
-            effect = "首次接管前会把整份宿主规则备份到 .hb_backup/，关掉开关即从备份还原；" +
-                "另外有三道防线防止被宿主覆盖回去。",
-            caveat = "这是唯一会修改宿主自身数据的开关，默认关闭。" +
-                "⚠ 它是**替换**不是叠加：开启后宿主自带的规则库（约 10,844 条，" +
-                "其中 1,533 条是元素隐藏规则）整个失效，只剩你自己那套 —— " +
-                "规则不够多、或者没有 ## 元素规则时，界面广告反而会变多。" +
-                "关闭状态下模块只用自己那套规则，不碰宿主文件。",
-        ),
-    ),
-    Toggle(
-        key = Config.AD_BUILTIN_RULES,
-        title = "内置推荐规则",
-        summary = "一键装上 EasyList China + ADgk（2.8 万条）",
-        default = Config.defaultOf(Config.AD_BUILTIN_RULES),
-        detail = Detail(
-            purpose = "把模块自带的一份中文规则集（EasyList China + ADgk 合并去重，2.8 万条）" +
-                "直接装进规则库 —— 不用自己去网上找规则文件再导入。",
-            target = "模块进程读 assets/builtin-rules.txt → AdRuleParser 解析 → 写进 adrules 规则库，" +
-                "作为一个普通规则集（source = builtin:recommended#<内容哈希>）；" +
-                "宿主进程照常从 remote preferences 读到它，不需要读 assets。",
-            effect = "开启即装上：约 1.8 万条请求拦截 + 约 0.98 万条元素隐藏规则" +
-                "（解析器会剔除其中 346 条不支持的 #@# / #?# 例外语法；实际条数以规则管理页的日志为准）。" +
-                "规则内容随模块版本更新（升级后重开一次本界面会自动替换），" +
-                "关掉会把这组从规则库里移除、不留残留。",
-            caveat = "默认关闭。它会往规则库里写进 2.8 万条（约占 900 KB 规则库容量、" +
-                "匹配期约 12 MB 内存），而且可能与你已导入的规则重叠 —— " +
-                "开了它就建议别再手动导入同类规则集。" +
-                "它出现在「规则管理」里，可以单独启停，但不能单独删除（由本开关控制）。",
-        ),
-    ),
-    Toggle(
-        key = Config.AD_RULE_AUTO_UPDATE,
-        title = "规则自动更新",
-        summary = "打开本应用时重下 URL 导入的规则集（24 小时至多一次）",
-        default = Config.defaultOf(Config.AD_RULE_AUTO_UPDATE),
-        detail = Detail(
-            purpose = "自动重新下载「从 URL 导入」的规则集 —— 规则源改版后不用你手动再导一次。",
-            target = "模块进程 RuleUpdater：只在打开本应用时触发，24 小时至多一次；" +
-                "按每组记录的来源 URL 重新下载 → 解析 → 覆盖该组，保留名称与启停状态。",
-            effect = "只对你自己用 URL 导入过的规则集生效，一个都没导入时完全无动作。" +
-                "失败静默处理、下次打开重试，不影响已有规则。",
-            caveat = "远端内容异常时（解析不出规则，或条数不足现有的十分之一）会**拒绝覆盖**，" +
-                "保留你手上的规则。它不是后台常驻任务 —— 不打开本应用就不会跑。" +
-                "从本地文件导入的规则集不参与自动更新，需要在规则管理页手动重导。",
-        ),
-    ),
-    Toggle(
-        key = Config.SCRIPT_USERSCRIPTS,
-        title = "用户脚本",
-        summary = "⚠ 在匹配的网页里执行导入的 JavaScript",
-        default = Config.defaultOf(Config.SCRIPT_USERSCRIPTS),
-        detail = Detail(
-            purpose = "执行你导入的用户脚本（油猴式 .user.js）：按脚本头部的 @match / @include " +
-                "匹配页面，页面加载完成后注入执行。管「加功能」——自动展开、去跳转中间页这类 " +
-                "CSS 做不到的事；与自定义拦截规则是互补关系。",
-            target = "复用自定义规则的注入通道：WebViewClient#onPageFinished → " +
-                "evaluateJavascript（webpage/PageInjection），不新增 hook 点。",
-            effect = "脚本库存在独立组 userscripts，改完数秒内自动生效，不用重启浏览器。" +
-                "document-start 声明降级为加载完成后执行；GM_* API 不支持（脚本照常注入，" +
-                "有降级路径的能正常用）；只注入 http/https 页面，宿主内部页不碰。",
-            caveat = "脚本能力等同网页自身代码，只导入来源可信的脚本。默认关闭，" +
-                "开启前会弹风险确认。",
-        ),
-    ),
-    Toggle(
         key = Config.MISC_UNLOCK_PREF,
         title = "解锁隐藏设置项",
         summary = "⚠ 强制放出宿主设置页的隐藏项",
@@ -392,17 +319,6 @@ internal val UI_TOGGLES = FUNCTION_TOGGLES.filter {
     )
 }
 
-/** 「规则」Tab：自定义规则、内置推荐规则、规则自动更新、宿主引擎接管与用户脚本。 */
-internal val RULES_TOGGLES = FUNCTION_TOGGLES.filter {
-    it.key in setOf(
-        Config.AD_CUSTOM_RULES,
-        Config.AD_BUILTIN_RULES,
-        Config.AD_RULE_AUTO_UPDATE,
-        Config.AD_HOST_OVERRIDE,
-        Config.SCRIPT_USERSCRIPTS,
-    )
-}
-
 /** 分区：高级（有副作用，默认关闭）。 */
 internal val ADVANCED_TOGGLES = FUNCTION_TOGGLES.filter {
     it.key in setOf(Config.MISC_UNLOCK_PREF, Config.MISC_DEBUG, Config.MISC_SECURITY)
@@ -431,11 +347,6 @@ internal val RISKY_CONFIRMS: Map<String, Pair<String, String>> = mapOf(
         "确认开启「解锁隐藏设置项」？" to
             "该开关会强制宿主设置页里每一个条目都变为可见。它作用于整个设置页，若宿主某条目" +
             "因机型不受支持而本应隐藏，放出来后点击可能异常；也请记住这是默认关闭的项。"
-        ),
-    Config.SCRIPT_USERSCRIPTS to (
-        "确认开启「用户脚本」？" to
-            "开启后，你导入的脚本会在匹配的网页里执行，能力等同网页自身代码。" +
-            "请只导入来源可信的脚本；不需要时建议保持关闭。"
         ),
 )
 
@@ -502,13 +413,34 @@ internal class Changelog(
  * <p>历史条目里对**旧框架 API 名字**的引用以常量拼接给出：工程自带的静态走查会扫描
  * 「源码里是否还引用旧 API 符号」，它分不清字符串里的历史说明与真引用，索性在源头绕开。
  */
+/** 更新日志二级页显示条数：只留最近几版，旧条目留在数据里但不上屏幕。 */
+internal const val LOG_DISPLAY_COUNT = 3
+
 private const val LEGACY_API = "de.robv.android" + ".xposed"
 private const val LEGACY_HELPERS = "Xposed" + "Helpers"
 
 internal val CHANGELOGS = listOf(
     Changelog(
-        version = "1.15.13",
+        version = "2.0.0",
         tag = "当前",
+        items = listOf(
+            "撤掉模块自带的拦截规则引擎与用户脚本：浏览器 20.32 起支持装扩展，这两块交给扩展更合适",
+            "安装包 11.7 MB → 见关于页体积说明；模块不再解析规则、不再跨进程镜像规则库、不再注入页面脚本",
+            "功能开关一个没少（开屏 / 首页推广 / 搜索推荐 / 错误页热搜 / 下载推广 / UA / 搜索引擎 / 快捷方式行数），界面从三个 Tab 变两个",
+        ),
+    ),
+    Changelog(
+        version = "1.16.0",
+        tag = "稳定版",
+        items = listOf(
+            "适配小米浏览器 20.32.1011110：29 个 hook 目标逐个复核仍在；下载弹窗的「小游戏推荐」方法已被宿主删除，改为缺失即跳过",
+            "版本判断放宽到版本线 —— 20.27 – 20.32 之间都算匹配，换构建号不再报「版本不符」",
+            "更新日志只显示最近三个版本，条目压成一句话",
+        ),
+    ),
+    Changelog(
+        version = "1.15.13",
+        tag = "稳定版",
         items = listOf(
             "**内置推荐规则**（新开关，默认关）：把 EasyList China + ADgk 合并去重的 2.8 万条规则内置进 APK —— 打开即用，不用自己找规则文件、不需要联网，并随模块版本自动更新",
             "**规则自动更新**（新开关，默认开）：对你自己用 URL 导入的规则集生效，打开本应用时自动重新下载（24 小时至多一次、失败静默）；规则管理页也可随时手动更新",
@@ -825,8 +757,8 @@ internal val PROJECT_INFO = listOf(
     ),
     InfoItem(
         label = "适配版本",
-        value = "小米浏览器 $HOST_VERSION_NAME",
-        detail = "宿主发版频繁；版本不一致时部分功能会静默失效，功能页顶部直接给出比对结果",
+        value = "小米浏览器 $HOST_VERSION_RANGE",
+        detail = "按版本线判断：20.27 起的宿主换构建号都算兼容；功能页顶部直接给出比对结果",
     ),
     InfoItem(
         label = "模块包名",

@@ -2,8 +2,6 @@ package com.hupan.hookbrowser
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.hupan.hookbrowser.adblock.AdRuleStore
-import com.hupan.hookbrowser.scripts.UserScriptStore
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
 import java.util.Collections
@@ -75,8 +73,6 @@ internal object ModuleService {
         // 首次连接时把三组都推一遍：用户可能是装完模块直接开浏览器，从没进过设置页。
         // 规则库 1.15.11 起可能跨多组（adrules / adrules2 / …），要按实际组数整组补推。
         pending.add(Config.PREFS_NAME)
-        pending.addAll(AdRuleStore.groupNames(app))
-        pending.add(UserScriptStore.PREFS)
         runCatching {
             XposedServiceHelper.registerListener(object : XposedServiceHelper.OnServiceListener {
                 override fun onServiceBind(s: XposedService) {

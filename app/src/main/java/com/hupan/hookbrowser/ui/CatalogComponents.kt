@@ -332,7 +332,7 @@ internal fun AboutHero(version: String) {
                         )
                     }
                     Text(
-                        text = "适配小米浏览器 $HOST_VERSION_NAME",
+                        text = "适配小米浏览器 $HOST_VERSION_RANGE",
                         fontSize = DsType.caption,
                         color = scheme.onBackgroundVariant,
                         modifier = Modifier.padding(start = DsSpace.sm),
@@ -636,7 +636,7 @@ internal fun TargetStatusCard() {
     // 读不到 ≠ 没装：Android 11+ 的包可见性（或隐藏列表类模块）都会让查询抛 NameNotFoundException，
     // 所以这里按「未检测到」呈现，见 readHostVersion 的说明。
     val targetVersion = remember(context) { readHostVersion(context) }
-    val matched = targetVersion == HOST_VERSION_NAME
+    val matched = hostVersionSupported(targetVersion)
     val unknown = targetVersion == null
     val scheme = MiuixTheme.colorScheme
 
@@ -658,7 +658,7 @@ internal fun TargetStatusCard() {
                 text = when {
                     matched -> "与模块适配版本一致"
                     unknown -> "可能未安装，也可能是系统限制了模块查看其它应用（不影响功能生效）"
-                    else -> "模块适配 $HOST_VERSION_NAME，该版本下部分功能可能不生效"
+                    else -> "模块适配 $HOST_VERSION_RANGE，该版本下部分功能可能不生效"
                 },
                 fontSize = DsType.body,
                 lineHeight = DsType.lineBody,

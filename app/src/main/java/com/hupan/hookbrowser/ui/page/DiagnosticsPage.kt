@@ -43,6 +43,7 @@ import com.hupan.hookbrowser.ui.DsRadius
 import com.hupan.hookbrowser.ui.DsSpace
 import com.hupan.hookbrowser.ui.DsType
 import com.hupan.hookbrowser.ui.HOST_VERSION_NAME
+import com.hupan.hookbrowser.ui.HOST_VERSION_RANGE
 import com.hupan.hookbrowser.ui.StatusPill
 import com.hupan.hookbrowser.ui.moduleVersion
 import com.hupan.hookbrowser.ui.readHostVersion
@@ -249,7 +250,7 @@ private fun copyDiagnostics(
 
     val text = buildString {
         appendLine("模块版本：$version")
-        appendLine("适配宿主：$HOST_VERSION_NAME")
+        appendLine("适配宿主：$HOST_VERSION_RANGE（基线 $HOST_VERSION_NAME）")
         appendLine("已装宿主：$hostVersion")
         appendLine("框架服务：${if (bound) "已连接（${framework ?: "未知"}）" else "未连接"}")
         appendLine()

@@ -4,7 +4,7 @@
  * 每个页面 = 一个 @Serializable 的 Route；navigation3 靠可序列化这一点做返回栈的保存与恢复
  * （旋转屏幕、进程被回收后重建都能回到原页面）。
  *
- * 三 Tab 主界面（功能 / 规则 / 关于）不是路由 —— 它是 MainPage 内部横向分页，
+ * 两 Tab 主界面（功能 / 关于）不是路由 —— 它是 MainPage 内部横向分页，
  * 切 Tab 不进返回栈、返回键先回第一个 Tab（见 MainPage）。二级页面才用路由。
  */
 package com.hupan.hookbrowser.ui.navigation
@@ -15,7 +15,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 sealed interface Route : NavKey {
 
-    /** 主界面：三 Tab（功能 / 规则 / 关于）+ 底部导航。 */
+    /** 主界面：两 Tab（功能 / 关于）+ 底部导航。 */
     @Serializable
     data object Main : Route
 
@@ -35,11 +35,4 @@ sealed interface Route : NavKey {
     @Serializable
     data object Diagnostics : Route
 
-    /** 规则管理页：导入 / 启停 / 删除自定义拦截规则集。入口在「规则」Tab。 */
-    @Serializable
-    data object RuleManager : Route
-
-    /** 脚本管理页：导入 / 启停 / 删除用户脚本。入口在「规则」Tab（1.14.0）。 */
-    @Serializable
-    data object ScriptManager : Route
 }

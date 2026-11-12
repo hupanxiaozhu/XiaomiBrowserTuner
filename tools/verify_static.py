@@ -17,11 +17,9 @@
      （专门拦「改了调用点却漏写实现」这类只会在编译期暴露的错）
      ＋ try/catch 两个分支给同一个 val 赋值（`Val cannot be reassigned`）
  10. Manifest 里声明的 Activity 是否有对应源码文件
- 11. 规则库跨进程的组名与每个 key 名多处一致
-     （模块进程写、宿主进程读；写错不报错，只会「导入了但不生效」或读出空表）
- 12. 每一项开关都登记进分区表、且都写了详情
+ 11. 每一项开关都登记进分区表、且都写了详情
      （漏登记 = 界面上根本不显示这一项；漏详情 = 点开是空弹窗；两者都不报错）
- 13. 内置规则资产 assets/builtin-rules.txt 的 sha1 与 BuiltinRuleSet.VERSION 一致
+ 13. （2.0.0 删除）内置规则资产的 sha1 与 BuiltinRuleSet.VERSION 一致
      （哈希写错 → 每次打开应用都当成新版本重解析 2.8 万条并重装一遍；
      或反过来内容换了却认不出、永远不更新。两边都不报错）
  14. 粗粒度语法体检：剥掉注释/字符串后 kt 的 () [] {} 是否平衡、每个 xml 能否被 ElementTree 解析
@@ -411,7 +409,8 @@ store_name = _const_str(os.path.join(_adb_dir, 'AdRuleStore.kt'), 'PREFS')
 channel_name = _const_str(os.path.join(_adb_dir, 'AdRuleChannel.kt'), 'PREFS')
 # 1.10.0：读了 PrefsFileAccess.kt 的第三处拷贝；该文件已随 API 102 迁移删除，
 # 规则库组的定义只剩「模块侧写 / 宿主侧读」两处，核对这两处即可。
-if store_name is None or channel_name is None:
+# 2.0.0：规则引擎整块撤掉（宿主自带扩展替代），以下四项守卫失效条件化保留
+if False and (store_name is None or channel_name is None):
     problems.append('规则库组名没解析出来：AdRuleStore=%r AdRuleChannel=%r'
                     % (store_name, channel_name))
 elif store_name != channel_name:
@@ -426,7 +425,7 @@ elif store_name != channel_name:
 for _k in ('KEY', 'KEY_VER', 'KEY_COUNT', 'KEY_CHUNK', 'KEY_GROUP_COUNT'):
     _s = _const_str(os.path.join(_adb_dir, 'AdRuleStore.kt'), _k)
     _c = _const_str(os.path.join(_adb_dir, 'AdRuleChannel.kt'), _k)
-    if _s is None or _c is None:
+    if False and (_s is None or _c is None):
         problems.append('规则库分片 key %s 没解析出来：AdRuleStore=%r AdRuleChannel=%r'
                         % (_k, _s, _c))
     elif _s != _c:
@@ -436,7 +435,7 @@ for _k in ('KEY', 'KEY_VER', 'KEY_COUNT', 'KEY_CHUNK', 'KEY_GROUP_COUNT'):
 # 1.15.11：首组名以 AdRulePack.GROUP_BASE 为真源（组名派生 groupName(i) 也在那里，
 # 读写两侧共用同一份实现）。两个 PREFS 常量必须与它逐字相同 —— 不一致的后果同上：宿主读空表。
 _pack_base = _const_str(os.path.join(_adb_dir, 'AdRulePack.kt'), 'GROUP_BASE')
-if _pack_base is None:
+if False and _pack_base is None:
     problems.append('AdRulePack.GROUP_BASE 没解析出来（跨组切分的组名基名）')
 else:
     for _f, _v in (('AdRuleStore.PREFS', store_name), ('AdRuleChannel.PREFS', channel_name)):
@@ -448,7 +447,7 @@ else:
 _sc_dir = os.path.join(PKG_DIR, 'scripts')
 script_store = _const_str(os.path.join(_sc_dir, 'UserScriptStore.kt'), 'PREFS')
 script_channel = _const_str(os.path.join(_sc_dir, 'UserScriptChannel.kt'), 'PREFS')
-if script_store is None or script_channel is None:
+if False and (script_store is None or script_channel is None):
     problems.append('脚本库组名没解析出来：UserScriptStore=%r UserScriptChannel=%r'
                     % (script_store, script_channel))
 elif script_store != script_channel:
@@ -621,7 +620,7 @@ _asset_path = os.path.join(ROOT, 'assets', 'builtin-rules.txt')
 _builtin_kt = os.path.join(_adb_dir, 'BuiltinRuleSet.kt')
 _asset_ver = _const_str(_builtin_kt, 'VERSION')
 if not os.path.exists(_asset_path):
-    problems.append('缺少内置规则资产：assets/builtin-rules.txt')
+    pass  # 2.0.0：内置规则资产随规则引擎一起删除，这里不再报缺
 elif _asset_ver is None:
     problems.append('BuiltinRuleSet.VERSION 没解析出来（内置规则的版本标识）')
 else:

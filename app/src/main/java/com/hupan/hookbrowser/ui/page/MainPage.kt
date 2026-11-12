@@ -2,10 +2,9 @@
  * 主界面（与番茄 HookFanqie 的 ui/page/MainPage.kt 同构）。
  *
  * 结构：
- *   Scaffold(bottomBar = miuix NavigationBar)   ← 底部三 Tab
+ *   Scaffold(bottomBar = miuix NavigationBar)   ← 底部两 Tab
  *     └ HorizontalPager                          ← 横向分页，左右滑也能切 Tab
  *         ├ FeaturesPage  功能
- *         ├ RulesPage     规则
  *         └ AboutPage     关于
  *   顶部没有共用顶栏：每个 Tab 自带 TopAppBar（标题随页不同、折叠行为互不干扰），
  *   本页只把「底栏内边距」通过 outerPadding 传下去，两者相加才是内容安全区。
@@ -15,7 +14,7 @@
  * 开关状态不在这里持有，而是提到 [ToggleState]（跨页面共享）—— 设置页里的「恢复默认」
  * 要能立刻反映到本页列表上，状态关在 remember 里就做不到。
  *
- * 三个浮层（详情 / 单选 / 风险确认）也统一在本页持有：切 Tab、进二级页再回来时状态一致，
+ * 四个浮层（详情 / 单选 / 风险确认 / 首次提示）也统一在本页持有：切 Tab、进二级页再回来时状态一致，
  * 不需要每个 Tab 各带一份。更新浮层（UpdateDialog）的数据在 ui/UpdateState ——
  * 触发点有两个（关于页手动检查 / MainActivity 自动检查），状态必须放在页面栈外面。
  */
@@ -42,13 +41,14 @@ import com.hupan.hookbrowser.ui.ShownDetail
 import com.hupan.hookbrowser.ui.UpdateState
 import com.hupan.hookbrowser.ui.component.ConfirmDialog
 import com.hupan.hookbrowser.ui.component.DetailDialog
+import com.hupan.hookbrowser.ui.component.FirstRunNotice
+import com.hupan.hookbrowser.ui.component.FirstRunNoticeDialog
 import com.hupan.hookbrowser.ui.component.OptionDialog
 import com.hupan.hookbrowser.ui.component.UpdateDialog
 import com.hupan.hookbrowser.ui.navigation.LocalNavigator
 import com.hupan.hookbrowser.ui.navigation.Route
 import com.hupan.hookbrowser.ui.page.about.AboutPage
 import com.hupan.hookbrowser.ui.page.features.FeaturesPage
-import com.hupan.hookbrowser.ui.page.rules.RulesPage
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
@@ -91,6 +91,9 @@ internal fun MainPage() {
     }
 
     // --- 详情浮层：显隐与内容分开存，关闭动画期间内容才不空 ---
+    // 2.0.0 的改动说明：只在首次打开这个版本时出现一次（标记存在独立 SP，不进 Config）
+    var showNotice by remember { mutableStateOf(FirstRunNotice.shouldShow(context)) }
+
     var detailShown by remember { mutableStateOf(false) }
     var detailTarget by remember { mutableStateOf<ShownDetail?>(null) }
     val showDetail: (String, String, Detail) -> Unit = { key, title, detail ->
@@ -155,13 +158,6 @@ internal fun MainPage() {
                         onShowOption = showOption,
                     )
 
-                    MainTab.Rules -> RulesPage(
-                        outerPadding = innerPadding,
-                        values = values,
-                        onUpdate = update,
-                        onShowDetail = showDetail,
-                    )
-
                     MainTab.About -> AboutPage(
                         outerPadding = innerPadding,
                         onOpenSettings = { navigator.navigate(Route.Settings) },
@@ -215,6 +211,16 @@ internal fun MainPage() {
                 onDismiss = { confirmKey = null },
                 bottomInset = dialogBottomInset,
             )
+
+            if (showNotice) {
+                FirstRunNoticeDialog(
+                    onDismiss = {
+                        FirstRunNotice.markSeen(context)
+                        showNotice = false
+                    },
+                    bottomInset = dialogBottomInset,
+                )
+            }
 
             // 更新浮层：关于页手动检查 / 打开应用自动检查的结果都从这里弹
             UpdateDialog(
