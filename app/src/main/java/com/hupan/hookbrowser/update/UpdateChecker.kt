@@ -64,9 +64,22 @@ internal object UpdateChecker {
     /** Release 说明最多展示的条数，防止超长正文把浮层撑爆 */
     private const val MAX_NOTES = 30
 
+    /**
+     * 响应体上限（2.0.1）。
+     *
+     * 这个接口的正常返回只有几 KB。原来直接 `readBytes()` 没有任何上限 ——
+     * 代理插页 / 异常大响应会把整段读进内存。512 KB 已经非常宽裕。
+     */
+    private const val MAX_BODY_BYTES = 512 * 1024
+
     private val json = Json { ignoreUnknownKeys = true }
     private val inFlight = AtomicBoolean(false)
     private val main = Handler(Looper.getMainLooper())
+
+    /** 检查线程（2.0.1）：单线程池替掉每次 `new Thread`，同一时刻仍只允许一个请求在飞 */
+    private val worker = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "hookbrowser-update-check").apply { isDaemon = true }
+    }
 
     // ---- 自动检查的本地设置 ----
 
@@ -110,7 +123,7 @@ internal object UpdateChecker {
             }
             return
         }
-        Thread {
+        worker.execute {
             val result: Result<ReleaseInfo?> = try {
                 Result.success(fetchLatest(appContext))
             } catch (t: Throwable) {
@@ -122,11 +135,11 @@ internal object UpdateChecker {
                     .putLong(KEY_LAST_AT, System.currentTimeMillis())
                     .apply()
             }
-            main.post {
-                inFlight.set(false)
-                onResult(result)
-            }
-        }.start()
+            // 2.0.1：先复位再回调。原来放在主线程 post 里，主线程一卡，「上一次还没结束」
+            // 这句提示就会一直挂着，手点检查再也发不出请求。
+            inFlight.set(false)
+            main.post { onResult(result) }
+        }
     }
 
     // ---- 请求与解析 ----
@@ -149,7 +162,21 @@ internal object UpdateChecker {
                 val hint = if (code == 403) "（GitHub 接口限流，请稍后再试）" else ""
                 throw IOException("GitHub 接口返回 HTTP $code$hint")
             }
-            val text = conn.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }
+            val text = conn.inputStream.use { input ->
+                val buf = java.io.ByteArrayOutputStream(8 * 1024)
+                val chunk = ByteArray(8 * 1024)
+                var total = 0
+                while (true) {
+                    val n = input.read(chunk)
+                    if (n < 0) break
+                    total += n
+                    if (total > MAX_BODY_BYTES) {
+                        throw IOException("响应体超过 ${MAX_BODY_BYTES / 1024} KB 上限，已放弃")
+                    }
+                    buf.write(chunk, 0, n)
+                }
+                buf.toString("UTF-8")
+            }
             val release = json.decodeFromString(GhRelease.serializer(), text)
             val latest = release.tagName.removePrefix("v").trim()
             if (compareVersions(latest, currentVersion(context)) <= 0) return null
@@ -171,17 +198,9 @@ internal object UpdateChecker {
             .take(MAX_NOTES)
     }
 
-    /** 版本号按「.」拆段逐段比数字（1.9.0 小于 1.10.0；解析不动的段当 0） */
-    internal fun compareVersions(a: String, b: String): Int {
-        val pa = a.split(".").map { seg -> seg.trim().filter { it.isDigit() }.toIntOrNull() ?: 0 }
-        val pb = b.split(".").map { seg -> seg.trim().filter { it.isDigit() }.toIntOrNull() ?: 0 }
-        for (i in 0 until maxOf(pa.size, pb.size)) {
-            val x = pa.getOrElse(i) { 0 }
-            val y = pb.getOrElse(i) { 0 }
-            if (x != y) return if (x > y) 1 else -1
-        }
-        return 0
-    }
+    // 版本号比较已移到同包的顶层函数 compareVersions()（update/VersionCompare.kt）：
+    // 本 object 构造里就要 new Handler(Looper.getMainLooper())，JVM 单测连初始化都做不到，
+    // 抽出去之后那段边界逻辑才钉得住。
 
     /** 把底层异常翻成用户能看懂的一句话（手动检查的失败提示直接展示它） */
     private fun friendly(t: Throwable): String = when (t) {

@@ -65,7 +65,7 @@ internal object Xp {
         if (obj == null) return null
         val f = findFieldCached(obj.javaClass, name) ?: return null
         return runCatching { f.get(obj) }
-            .onFailure { XLog.v("读字段 $name 失败: ${it.javaClass.simpleName}") }
+            .onFailure { XLog.v { "读字段 $name 失败: ${it.javaClass.simpleName}" } }
             .getOrNull()
     }
 
@@ -74,7 +74,7 @@ internal object Xp {
         if (cls == null) return null
         val f = findFieldCached(cls, name) ?: return null
         return runCatching { f.get(null) }
-            .onFailure { XLog.v("读静态字段 $name 失败: ${it.javaClass.simpleName}") }
+            .onFailure { XLog.v { "读静态字段 $name 失败: ${it.javaClass.simpleName}" } }
             .getOrNull()
     }
 
@@ -83,13 +83,52 @@ internal object Xp {
         if (obj == null) return
         val f = findFieldCached(obj.javaClass, name) ?: return
         runCatching { f.set(obj, value) }
-            .onFailure { XLog.v("setField $name 失败: ${it.javaClass.simpleName}") }
+            .onFailure { XLog.v { "setField $name 失败: ${it.javaClass.simpleName}" } }
     }
 
     /** 写布尔字段（`Field.set` 装箱，Kotlin 的 Boolean 自动装箱，无需单独实现） */
     fun setBoolField(obj: Any?, name: String, value: Boolean) = setField(obj, name, value)
 
     // ===================== 方法调用 =====================
+
+    /**
+     * 方法查找缓存（2.0.1）。
+     *
+     * [findFieldCached] 早就缓存了字段查找，方法这边却**每次**都要沿整条继承链
+     * `getDeclaredMethods()` —— ART 上这个方法每次返回一份**新拷贝的数组**，
+     * 再两次 `filterTo` 建候选表。而 `call()` 在热路径上并不稀疏：
+     * `RecentAppManager#getRecentAppList` 的 after 对列表里每一项调两次 `isAd()`，
+     * `shouldInterceptRequest` 每个 H5 请求调两次取值器。
+     *
+     * 缓存键把「实参类型序列 + 静态性」编进去：同一组实参形态必然落到同一个 Method，
+     * 不会把同名的重载串味。找不到的同样用 [MISS] 缓存 —— 找不到也是走完整条继承链。
+     */
+    private val methodCache = ConcurrentHashMap<String, Any>()
+
+    private fun methodKey(cls: Class<*>, name: String, args: Array<out Any?>, wantStatic: Boolean): String {
+        val sb = StringBuilder(cls.name.length + name.length + 16 + args.size * 24)
+        sb.append(cls.name).append('#').append(name).append('/').append(wantStatic)
+        for (a in args) sb.append('/').append(a?.javaClass?.name ?: "null")
+        return sb.toString()
+    }
+
+    private fun findMethodCached(
+        cls: Class<*>,
+        name: String,
+        args: Array<out Any?>,
+        wantStatic: Boolean
+    ): Method? {
+        val key = methodKey(cls, name, args, wantStatic)
+        methodCache[key]?.let { return if (it === MISS) null else it as Method }
+        val m = findMethod(cls, name, args, wantStatic)
+        if (m == null) {
+            methodCache[key] = MISS
+        } else {
+            runCatching { m.isAccessible = true }
+            methodCache[key] = m
+        }
+        return m
+    }
 
     /** 调实例方法 */
     fun call(obj: Any?, name: String, vararg args: Any?): Any? {
@@ -110,10 +149,9 @@ internal object Xp {
         wantStatic: Boolean,
         args: Array<out Any?>
     ): Any? = runCatching {
-        val m = findMethod(cls, name, args, wantStatic) ?: return@runCatching null
-        m.isAccessible = true
+        val m = findMethodCached(cls, name, args, wantStatic) ?: return@runCatching null
         m.invoke(receiver, *args)
-    }.onFailure { XLog.v("调用 $name 失败: ${it.javaClass.simpleName}") }.getOrNull()
+    }.onFailure { XLog.v { "调用 $name 失败: ${it.javaClass.simpleName}" } }.getOrNull()
 
     /**
      * 找方法：先按「静态性 + 参数个数 + 类型可赋值」精确匹配，

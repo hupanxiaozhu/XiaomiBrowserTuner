@@ -102,7 +102,8 @@ internal object Hooks {
     /** 本类自己声明的方法（不递归父类）；按「类名#方法名」缓存，热路径上反复挂同一目标时不重复反射 */
     private val methodCache = java.util.concurrent.ConcurrentHashMap<String, List<Method>>()
     private fun declaredMethodsNamed(target: Class<*>, name: String): List<Method> =
-        methodCache.getOrPut("${target.name}#$name") {
+        // computeIfAbsent 而不是 getOrPut：后者在并发首次挂载时会把映射函数跑两遍（重复反射，虽无害）
+        methodCache.computeIfAbsent("${target.name}#$name") {
             target.declaredMethods.filter { it.name == name }
         }
 
@@ -146,12 +147,26 @@ internal typealias HookAction = (HookedCall) -> Unit
  * 注意旧 API 的 `param.setResult(x)` 在这里**没有**对应方法（同名会和属性的 JVM 访问器撞签名），
  * 平移旧代码时统一改成赋值写法即可，语义等价。
  */
-internal class HookedCall(
-    val thisObject: Any?,
-    val args: Array<Any?>,
-    val method: Method,
+internal class HookedCall internal constructor(
+    private var obj: Any?,
+    private var argArray: Array<Any?>,
+    private var methodRef: Method?,
     private var value: Any? = null
 ) {
+
+    /**
+     * 被调用方法的接收者（静态方法为 null）。
+     *
+     * 2.0.1 起这三个字段不再走构造器 val，而是**可复位的槽位** —— 见 [bind]。
+     * 对调用方完全透明：读法、改 `args` 元素、读 `method` 的写法都不变。
+     */
+    val thisObject: Any? get() = obj
+
+    /** 实参表，可直接改元素（语义与旧 `MethodHookParam.args` 一致） */
+    val args: Array<Any?> get() = argArray
+
+    /** 被调用的方法，`method.declaringClass` 即「声明它的类」 */
+    val method: Method get() = methodRef ?: throw IllegalStateException("HookedCall 尚未绑定")
     /** 返回值；赋值即表示「本次调用由我给出结果」 */
     var result: Any?
         get() = value
@@ -181,6 +196,24 @@ internal class HookedCall(
         value = v
     }
 
+    /**
+     * 复用前复位（2.0.1）：把这一次调用的实参搬进**已经分配好**的数组。
+     *
+     * 拦截器是逐次调用的，而 `QuickLinksPanel#onLayout` 这类 hook 每帧都跑一遍 ——
+     * 每次新建 `HookedCall` + 参数数组就是白送的 GC 压力。这里按线程留一个槽位循环使用，
+     * 数组只在参数**个数**变化时才重新分配。
+     */
+    internal fun bind(newObj: Any?, newMethod: Method, src: List<Any?>, size: Int): HookedCall {
+        obj = newObj
+        methodRef = newMethod
+        if (argArray.size != size) argArray = arrayOfNulls(size)
+        for (i in 0 until size) argArray[i] = src[i]
+        value = null
+        hasResult = false
+        throwable = null
+        return this
+    }
+
     /** proceed 抛出的异常（诊断用） */
     internal var throwable: Throwable? = null
 }
@@ -201,6 +234,16 @@ private class SafeHook(
     private val after: HookAction?
 ) : Hooker {
 
+    /** 每线程一个复用槽；`inUse` 挡住同一线程上的重入（重入时退回新建） */
+    private class ReuseSlot {
+        var inUse = false
+        val call = HookedCall(null, emptyArray(), null)
+    }
+
+    private val reuseSlot = object : ThreadLocal<ReuseSlot>() {
+        override fun initialValue(): ReuseSlot = ReuseSlot()
+    }
+
     /**
      * `throws Throwable` **不能省**：Java 侧的 `Hooker.intercept` 声明了 `throws Throwable`，
      * Kotlin 覆写时不写 `@Throws` 也能编译，但字节码里就没有异常表项，框架反射调用时
@@ -216,27 +259,41 @@ private class SafeHook(
         // chain.args 是**只读**列表，且形参就是 Object[]（旧 API 的 param.args 同型）：
         // 拷成数组交给回调，语义与旧代码完全一致（包括 `p.args[0] = x` 这种写元素）。
         val size = chain.args.size
-        val call = HookedCall(chain.thisObject, Array(size) { chain.args[it] }, exec)
-        // 只有 before 阶段可能改参数，纯 after 的 hook 也就不用留快照。
-        // 这类 hook 常在帧内反复触发（如 `QuickLinksPanel#onLayout` 的重排），省掉这次
-        // 数组拷贝与逐元素比较，少一份每帧的无谓分配。
-        val originalArgs = if (before != null) call.args.copyOf() else null
-
-        fire(before, call)
-        if (call.hasResult) return call.result
-        val value: Any? = try {
-            // 旧 API 里改 param.args 会真的换掉实参；只在确实被改过时才把新数组传进去。
-            // ⚠ proceed(Object[]) **不是 vararg**（Kotlin 里不能用 `*` 展开），直接传数组。
-            if (originalArgs == null || call.args.contentEquals(originalArgs)) chain.proceed()
-            else chain.proceed(call.args)
-        } catch (t: Throwable) {
-            call.throwable = t
-            throw t
+        // 复用槽（2.0.1）：本线程上一次的槽位空着就直接拿回来。**重入时退回新建** ——
+        // hook 回调里再触发同一个 hook（嵌套布局、回调转调）时，槽位已被外层占着，
+        // 复用会把外层的实参覆写掉，所以 [ReuseSlot.inUse] 是必须的，不是保险。
+        val slot = reuseSlot.get()!!
+        val nested = slot.inUse
+        val call = if (nested) {
+            HookedCall(chain.thisObject, Array(size) { chain.args[it] }, exec)
+        } else {
+            slot.inUse = true
+            slot.call.bind(chain.thisObject, exec, chain.args, size)
         }
-        // 把真实返回值喂给 after 回调；若 after 没改它，就原样返回
-        call.setRaw(value)
-        fire(after, call)
-        return call.result
+        try {
+            // 只有 before 阶段可能改参数，纯 after 的 hook 也就不用留快照。
+            // 这类 hook 常在帧内反复触发（如 `QuickLinksPanel#onLayout` 的重排），省掉这次
+            // 数组拷贝与逐元素比较，少一份每帧的无谓分配。
+            val originalArgs = if (before != null) call.args.copyOf() else null
+
+            fire(before, call)
+            if (call.hasResult) return call.result
+            val value: Any? = try {
+                // 旧 API 里改 param.args 会真的换掉实参；只在确实被改过时才把新数组传进去。
+                // ⚠ proceed(Object[]) **不是 vararg**（Kotlin 里不能用 `*` 展开），直接传数组。
+                if (originalArgs == null || call.args.contentEquals(originalArgs)) chain.proceed()
+                else chain.proceed(call.args)
+            } catch (t: Throwable) {
+                call.throwable = t
+                throw t
+            }
+            // 把真实返回值喂给 after 回调；若 after 没改它，就原样返回
+            call.setRaw(value)
+            fire(after, call)
+            return call.result
+        } finally {
+            if (!nested) slot.inUse = false
+        }
     }
 
     private fun fire(action: HookAction?, call: HookedCall) {

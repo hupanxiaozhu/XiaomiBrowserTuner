@@ -34,7 +34,7 @@ internal const val HOST_PACKAGE = "com.android.browser"
 internal const val HOST_VERSION_NAME = "20.32.1011110"
 
 /** 适配区间文案：只看版本线（20.xx），第三段构建号不参与判断。 */
-internal const val HOST_VERSION_RANGE = "20.27 – 20.32"
+internal const val HOST_VERSION_RANGE = "20.6（平板）/ 20.27 – 20.32"
 
 /**
  * 适配区间上下限（次版本号）。
@@ -46,12 +46,24 @@ internal const val HOST_VERSION_RANGE = "20.27 – 20.32"
 internal const val HOST_VERSION_MIN_LINE = 27
 internal const val HOST_VERSION_MAX_LINE = 32
 
-/** 宿主版本是否在已核对区间内：`20.a.b` 且 a ∈ [MIN, MAX]；解析失败算不匹配。 */
+/**
+ * 平板版本线（2.2.0）。
+ *
+ * 小米浏览器平板版走独立的发布线，当前在用的是 **20.6.1020915**（`浏览器 pad_20.6.1020915.apk`）。
+ * 它的 13 组 hook 目标已逐个核对过：大部分同名同签名，差异集中在五处
+ * （搜索建议管理器与捕获方法、首页推广的两个 getHasShow*、UA 后缀方法的大小写、
+ * 下载推荐的方法名、以及平板**没有**工具栏引擎切换与下载引导卡）。
+ * 逐条结论写在各 feature 的注释里，这里只认「20.6 这一条线」——
+ * 20.7 – 20.26 没有核对过，不放行。
+ */
+internal const val HOST_VERSION_PAD_LINE = 6
+
+/** 宿主版本是否在已核对区间内：`20.a.b` 且 a 落在手机线或平板线上；解析失败算不匹配。 */
 internal fun hostVersionSupported(version: String?): Boolean {
     val parts = version?.split('.') ?: return false
     if (parts.size < 3 || parts[0] != "20") return false
     val line = parts[1].toIntOrNull() ?: return false
-    return line in HOST_VERSION_MIN_LINE..HOST_VERSION_MAX_LINE
+    return line in HOST_VERSION_MIN_LINE..HOST_VERSION_MAX_LINE || line == HOST_VERSION_PAD_LINE
 }
 
 // ---------------------------------------------------------------------------
@@ -421,8 +433,18 @@ private const val LEGACY_HELPERS = "Xposed" + "Helpers"
 
 internal val CHANGELOGS = listOf(
     Changelog(
-        version = "2.0.0",
+        version = "2.2.1",
         tag = "当前",
+        items = listOf(
+            "支持平板：小米浏览器平板版（20.6.x）的搜索下拉、首页推广、UA 伪装都能用了",
+            "修搜索下拉推广卡片：手机端改为每次都完整注入，平板端改为在原生列表出口摘掉广告项",
+            "修偶发失效（多行主页偶尔跳回两行、主页回弹偶尔不生效）与改开关卡顿",
+            "安装包 11.3 MB → 2.15 MB",
+        ),
+    ),
+    Changelog(
+        version = "2.0.0",
+        tag = "稳定版",
         items = listOf(
             "撤掉模块自带的拦截规则引擎与用户脚本：浏览器 20.32 起支持装扩展，这两块交给扩展更合适",
             "安装包 11.7 MB → 见关于页体积说明；模块不再解析规则、不再跨进程镜像规则库、不再注入页面脚本",

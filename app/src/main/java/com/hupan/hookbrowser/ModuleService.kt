@@ -55,6 +55,17 @@ internal object ModuleService {
     /** 服务未连接时先记下要推的组，连上后补推 */
     private val pending = Collections.synchronizedList(ArrayList<String>())
 
+    /**
+     * 写穿线程（2.0.1）。
+     *
+     * 本地 SP 是唯一真源，改一个开关就要把整组镜像给框架；而远端组的 `commit()` 是一次
+     * **同步 Binder 事务**。它原来直接跑在点击事件的主线程上 —— 连点几个开关就能感到界面迟滞。
+     * 现在统一排到一条后台线程顺序执行：远端组是整组覆盖写的，顺序执行天然不会互相踩。
+     */
+    private val writer = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "hookbrowser-prefs-push").apply { isDaemon = true }
+    }
+
     /** 是否已连上框架服务 */
     val isBound: Boolean get() = service != null
 
@@ -155,6 +166,20 @@ internal object ModuleService {
             XLog.v("【同步】组 $group → $n 个 key")
         }
         return ok
+    }
+
+    /**
+     * 异步镜像（2.0.1，界面线程的调用点用这个）。
+     *
+     * 语义与 [push] 完全一致，只是不占用调用线程：把「取全量 SP → 逐条写远端 → commit」
+     * 整段挪到 [writer] 上排队。同一个组会被连续覆盖写多次，结果仍是最后那份，不会写坏。
+     */
+    fun pushAsync(ctx: Context, group: String) {
+        val app = ctx.applicationContext
+        writer.execute {
+            runCatching { push(app, group) }
+                .onFailure { XLog.e("后台镜像组 $group 失败", it) }
+        }
     }
 
     /** 服务刚连上时补推积压的组 */

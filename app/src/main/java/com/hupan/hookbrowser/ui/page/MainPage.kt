@@ -79,15 +79,21 @@ internal fun MainPage() {
      * 关掉风险开关不需要确认 —— 那是回到更安全的一侧。
      */
     var confirmKey by remember { mutableStateOf<String?>(null) }
-    val update: (String, Boolean) -> Unit = { key, value ->
-        if (value && RISKY_CONFIRMS.containsKey(key)) {
-            confirmKey = key
-        } else {
-            ToggleState.set(context, key, value)
+    // 2.0.1：下面这几个回调全部用 remember 钉住实例。
+    // 不 remember 的话每次重组都是新 lambda → FeaturesPage / AboutPage 的参数被判成「变了」，
+    // 跳过优化失效 —— 点任意一个开关，两个 Tab 会一起重组（视觉上「整屏闪一下」）。
+    // remember 块里只**写**状态、不读状态值，所以不存在「读到旧值」的陷阱。
+    val update: (String, Boolean) -> Unit = remember(context) {
+        { key, value ->
+            if (value && RISKY_CONFIRMS.containsKey(key)) {
+                confirmKey = key
+            } else {
+                ToggleState.set(context, key, value)
+            }
         }
     }
-    val updateString: (String, String) -> Unit = { key, value ->
-        ToggleState.setString(context, key, value)
+    val updateString: (String, String) -> Unit = remember(context) {
+        { key, value -> ToggleState.setString(context, key, value) }
     }
 
     // --- 详情浮层：显隐与内容分开存，关闭动画期间内容才不空 ---
@@ -96,17 +102,20 @@ internal fun MainPage() {
 
     var detailShown by remember { mutableStateOf(false) }
     var detailTarget by remember { mutableStateOf<ShownDetail?>(null) }
-    val showDetail: (String, String, Detail) -> Unit = { key, title, detail ->
-        detailTarget = ShownDetail(key, title, detail)
-        detailShown = true
+    val showDetail: (String, String, Detail) -> Unit = remember {
+        { key, title, detail ->
+            detailTarget = ShownDetail(key, title, detail)
+            detailShown = true
+        }
     }
 
     // --- 单选浮层（UA 模式 / 默认搜索引擎）---
     var optionTarget by remember { mutableStateOf<OptionTarget?>(null) }
-    val showOption: (String, List<OptionItem>, String, (String) -> Unit) -> Unit =
+    val showOption: (String, List<OptionItem>, String, (String) -> Unit) -> Unit = remember {
         { title, options, selected, onPick ->
             optionTarget = OptionTarget(title, options, selected, onPick)
         }
+    }
 
     // --- 分页 ---
     val tabs = MainTab.entries
@@ -115,8 +124,12 @@ internal fun MainPage() {
     // 返回键的判定用 settledPage（滑动停下后的页）而不是 currentPage（滑动途中就在变）：
     // 后者会在动画中途把返回键的落点甩到别的 Tab 上
     val settledPage = pagerState.settledPage
-    val goToTab: (Int) -> Unit = { index ->
-        if (index != currentPage) scope.launch { pagerState.animateScrollToPage(index) }
+    // 这里刻意读 `pagerState.currentPage` 而不是外层捕获的 currentPage：
+    // 闭包被 remember 住以后，捕获的常量会一直停在首次组合的值上。
+    val goToTab: (Int) -> Unit = remember(scope, pagerState) {
+        { index ->
+            if (index != pagerState.currentPage) scope.launch { pagerState.animateScrollToPage(index) }
+        }
     }
 
     BackHandler(enabled = settledPage != 0) { goToTab(0) }

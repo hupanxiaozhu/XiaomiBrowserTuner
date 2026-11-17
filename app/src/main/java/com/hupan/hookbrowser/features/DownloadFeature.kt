@@ -84,8 +84,20 @@ internal object DownloadFeature : Feature(Config.UI_DOWNLOAD) {
 
     override fun install(cl: ClassLoader) {
         // 推荐数据不再请求（方法返回 void，before 阶段给结果即跳过原实现）
+        //
+        // 20.27 起这个方法实际叫 tryRequestGameRecommend（RxJava 订阅版），1.15.3 写的
+        // requestGameRecommend 在手机上**一直是空挂**（20.32 清单里零命中）。
+        // 20.6 平板干脆没有小游戏推荐，两条都会安静跳过。
+        Hooks.hook(cl, CLS, "tryRequestGameRecommend") { p ->
+            if (on()) p.result = null
+        }
+        // 更老的名字保留，兼容仍带该方法的宿主
         Hooks.hook(cl, CLS, "requestGameRecommend") { p ->
             if (on()) p.result = null
+        }
+        // 数据入口的开关：直接判否，连请求都不发起（20.32 存在，20.6 无）
+        Hooks.hook(cl, CLS, "isMiniGameDownloadRecEnable") { p ->
+            if (on()) p.result = false
         }
 
         // 弹窗建好之后，把推广控件置 GONE（只改可见性，不动宿主流程与返回值）

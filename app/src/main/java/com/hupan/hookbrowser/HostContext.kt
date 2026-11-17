@@ -31,6 +31,9 @@ internal object HostContext {
     /** Application 就绪前注册的等待者（见 [onApplication]） */
     private val waiters = java.util.concurrent.CopyOnWriteArrayList<(Context) -> Unit>()
 
+    /** Application 迟迟不 attach 时的兜底时限（毫秒） */
+    private const val ATTACH_TIMEOUT_MS = 3_000L
+
     /** 在宿主进程里调用一次；重复调用无副作用 */
     fun install() {
         runCatching {
@@ -43,7 +46,39 @@ internal object HostContext {
                 }
             }
             XLog.v("宿主 Context 钩子已挂（$n 个重载）")
+            startFallbackProbe()
         }.onFailure { XLog.v("宿主 Context 钩子失败：${it.javaClass.simpleName} ${it.message}") }
+    }
+
+    /**
+     * 兜底探针（2.0.1）。
+     *
+     * `attachBaseContext` 这条 hook 的前提是「本模块的 `onPackageLoaded` 早于 Application 创建」。
+     * 个别启动路径（框架实现差异、宿主进程被预热过）并不满足这个前提，那时这条 hook 再也不会
+     * 触发，[waiters] 里的回调就**永久滞留** —— 表现只是「规则库读不到」，没有任何错误日志。
+     *
+     * 所以 3 秒后主动探一次：探到 Application 就当作正常 attach 走同一条 [fire] 路径；
+     * 探不到只记一行，说明宿主确实还没建 Application，[waiters] 继续等。
+     */
+    private fun startFallbackProbe() {
+        val t = Thread {
+            runCatching { Thread.sleep(ATTACH_TIMEOUT_MS) }
+            if (ref != null) return@Thread
+            val ctx = runCatching {
+                val at = Class.forName("android.app.ActivityThread")
+                at.getMethod("currentApplication").invoke(null) as? Context
+            }.getOrNull()
+            if (ctx != null) {
+                ref = ctx
+                XLog.i("宿主 Context 由兜底探针取得（attachBaseContext 未按预期触发）")
+                fire(ctx)
+            } else {
+                XLog.i("宿主 Context 兜底探针未取到（Application 尚未创建，继续等待）")
+            }
+        }
+        t.name = "hookbrowser-ctx-probe"
+        t.isDaemon = true
+        t.start()
     }
 
     /**

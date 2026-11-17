@@ -67,7 +67,14 @@ internal class SettingsPrefs(context: Context) {
         push()
     }
 
+    /**
+     * 镜像到框架（2.0.1 起走后台线程）。
+     *
+     * 之前这里是同步 `ModuleService.push` —— 远端组 `commit()` 是一次同步 Binder 事务，
+     * 直接压在开关的点击事件上。换成 [ModuleService.pushAsync] 后点击立即返回，
+     * 界面状态（ToggleState）已经先更新过了，宿主侧最多晚一个 Binder 往返看到新值。
+     */
     private fun push() {
-        ModuleService.push(appContext, Config.PREFS_NAME)
+        ModuleService.pushAsync(appContext, Config.PREFS_NAME)
     }
 }

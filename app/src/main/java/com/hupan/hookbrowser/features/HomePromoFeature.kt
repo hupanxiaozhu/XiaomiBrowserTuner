@@ -27,6 +27,12 @@ internal object HomePromoFeature : Feature(Config.AD_HOME_PROMO) {
         Hooks.hook(cl, POM, "getHasShowSimpleToPremiumGuideDialog") { p ->
             if (on()) p.result = false
         }
+        // 20.6（平板）：宿主编译成 Kotlin 属性，getter 就是 isShowPremiumGuideDialog()，
+        // 取代了上面那两个 getHasShow* 方法（平板里它们都不存在）。
+        // 手机上找不到这个重载会安静跳过，不影响原有两条。
+        Hooks.hook(cl, POM, "isShowPremiumGuideDialog") { p ->
+            if (on()) p.result = false
+        }
         // 首页布局里的推广位（原 APK 里方法名拼写就是 chanShow...）
         Hooks.hook(cl, SVH, "chanShowPremiumChangeLayout") { p ->
             if (on()) p.result = false

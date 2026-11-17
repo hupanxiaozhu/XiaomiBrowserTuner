@@ -185,31 +185,56 @@ internal object HomeQuickLinkRowsFeature : Feature(Config.UI_QUICKLINK_ROWS) {
         // 开关判断走只读快照：绝不允许一次跨进程读落进当前帧（掉帧的直接来源）
         if (!onCached()) return
         val more = Hooks.field(panel, FIELD_MORE_CELL) as? View ?: return
-        val pos = panel.indexOfChild(more)
-        if (pos < 0) return
 
         val w = more.measuredWidth
         val h = more.measuredHeight
         if (w <= 0 || h <= 0) return
 
-        val perRow = (Hooks.field(panel, FIELD_NUMS_PER_ROW) as? Int)?.takeIf { it > 0 }
-            ?: FALLBACK_PER_ROW
-        val spacingH = Hooks.field(panel, FIELD_SPACING_H) as? Int ?: return
-        val spacingV = Hooks.field(panel, FIELD_SPACING_V) as? Int ?: return
-        val marginItem = Hooks.field(panel, FIELD_MARGIN_ITEM) as? Int ?: return
-        val marginTop = Hooks.field(panel, FIELD_MARGIN_TOP) as? Int ?: return
-        val rtl = Hooks.field(panel, FIELD_RTL) as? Boolean ?: false
+        // 2.0.1：列数 / 三档间距 / RTL 这 5 个值在整个宿主生命周期里不会变，
+        // 按面板实例缓存一次就够了 —— 原来是**每帧 5 次 Field.get**（每次都是反射 JNI 调用）。
+        val metrics = metricsOf(panel) ?: return
+        val pos = panel.indexOfChild(more)
+        if (pos < 0) return
 
-        val col = pos % perRow
-        val top = (pos / perRow) * (h + spacingV) + marginTop
-        val left = if (rtl) {
-            panel.width - marginItem - col * (w + spacingH) - w
+        val col = pos % metrics.perRow
+        val top = (pos / metrics.perRow) * (h + metrics.spacingV) + metrics.marginTop
+        val left = if (metrics.rtl) {
+            panel.width - metrics.marginItem - col * (w + metrics.spacingH) - w
         } else {
-            col * (w + spacingH) + marginItem
+            col * (w + metrics.spacingH) + metrics.marginItem
         }
         // 位置没变就别折腾（原生 show ≤ 9 时算出来和宿主一致，天然幂等）
         if (more.left == left && more.top == top) return
         more.layout(left, top, left + w, top + h)
+    }
+
+    /** 布局折算用的常量值（列数 / 三档间距 / RTL）；任何一个读不到就整条放弃，与旧行为一致 */
+    private class LayoutMetrics(
+        val perRow: Int,
+        val spacingH: Int,
+        val spacingV: Int,
+        val marginItem: Int,
+        val marginTop: Int,
+        val rtl: Boolean,
+    )
+
+    /** 弱引用：面板被宿主重建时条目自然回收，不会挂住 View 树 */
+    private val metricsCache = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<ViewGroup, LayoutMetrics>()
+    )
+
+    private fun metricsOf(panel: ViewGroup): LayoutMetrics? {
+        metricsCache[panel]?.let { return it }
+        val perRow = (Hooks.field(panel, FIELD_NUMS_PER_ROW) as? Int)?.takeIf { it > 0 }
+            ?: FALLBACK_PER_ROW
+        val spacingH = Hooks.field(panel, FIELD_SPACING_H) as? Int ?: return null
+        val spacingV = Hooks.field(panel, FIELD_SPACING_V) as? Int ?: return null
+        val marginItem = Hooks.field(panel, FIELD_MARGIN_ITEM) as? Int ?: return null
+        val marginTop = Hooks.field(panel, FIELD_MARGIN_TOP) as? Int ?: return null
+        val rtl = Hooks.field(panel, FIELD_RTL) as? Boolean ?: false
+        val m = LayoutMetrics(perRow, spacingH, spacingV, marginItem, marginTop, rtl)
+        metricsCache[panel] = m
+        return m
     }
 
     /** 每行几个：读宿主网格自己的 `mNumsPerRow`；读了两个面板都拿不到就按实测的 5 列 */

@@ -12,8 +12,13 @@ internal abstract class Feature(val key: String) {
 
     abstract fun install(cl: ClassLoader)
 
-    /** 开关状态（会按 TTL 刷新快照，低频调用点用这个） */
-    protected fun on(): Boolean = Config.masterOn() && Config.on(key)
+    /**
+     * 开关状态（会按 TTL 刷新快照，低频调用点用这个）。
+     *
+     * 2.0.1 起走 [Config.onWithMaster]：总闸与单项开关判**同一份快照**，
+     * 不再各查一次（13 组功能的每个回调都在这条路上）。
+     */
+    protected fun on(): Boolean = Config.onWithMaster(key)
 
     /**
      * 热路径专用的开关判断（1.15.5）：只读本地快照，**不发起跨进程刷新**。

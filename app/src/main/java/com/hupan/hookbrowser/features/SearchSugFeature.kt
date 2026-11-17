@@ -3,8 +3,10 @@ package com.hupan.hookbrowser.features
 import android.os.Handler
 import android.os.Looper
 import com.hupan.hookbrowser.Config
+import com.hupan.hookbrowser.HookedCall
 import com.hupan.hookbrowser.Hooks
 import com.hupan.hookbrowser.XLog
+import com.hupan.hookbrowser.Xp
 import java.lang.reflect.Proxy
 
 /**
@@ -143,8 +145,40 @@ internal object SearchSugFeature : Feature(Config.AD_SEARCH_SUG) {
     /** 新实现（WebView 版搜索建议） */
     private const val CLS_SUG_MGR = "com.android.browser.suggestion.SearchSugManager"
 
-    /** 旧实现（原生搜索建议） */
+    /**
+     * 根包的 `SearchSuggestionManager`。
+     *
+     * - 20.27+ 上它是**旧的**原生建议实现（原来只用来打诊断）；
+     * - **20.6（平板）上它是现役唯一实现**，搜索建议的 WebView 也由它托管
+     *   （捕获方法叫 `initSugWebview`，注意是小写 w）。
+     *
+     * 平板的 `com.android.browser.suggestion.SearchSugManager` 根本不存在（全 dex 0 命中），
+     * 只挂手机那两条的话，`sugWebView` 永远为 null，后面两条注入 hook 全部 early-return ——
+     * 表现就是「手机上拦住了，平板上卡片照旧」。
+     */
     private const val CLS_SUG_MGR_OLD = "com.android.browser.SearchSuggestionManager"
+
+    /**
+     * 原生建议的数据出口（2.2.1）。
+     *
+     * 20.6 平板的搜索下拉有可能是**原生视图**（`NativeSugManager` + `NativeSugView`），
+     * 而不是 20.27+ 那个 H5 页面。那条链路 JS 一条都打不到，卡片由
+     * `NativeSugItem{type = AD}` 直接渲染。
+     *
+     * `SearchSuggestionManager$3` 是 `NativeSugManager.ResultCallback` 的唯一实现，
+     * `onResult(List, String)` 是列表交给 UI 前的最后一道。类名里的 `$3` 是匿名内部类编号，
+     * 换版本会变 —— [findNativeCallback] 有兜底扫描。
+     */
+    private const val CLS_NATIVE_CB = "com.android.browser.SearchSuggestionManager\$3"
+
+    /** 原生建议项的广告类型枚举常量名 */
+    private const val NATIVE_TYPE_AD = "AD"
+
+    /** 手机（20.27+）捕获搜索建议 WebView 的方法名 */
+    private const val METHOD_INIT_SUG_WEBVIEW = "initSugWebView"
+
+    /** 平板（20.6）捕获搜索建议 WebView 的方法名：小写 w */
+    private const val METHOD_INIT_SUG_WEBVIEW_LEGACY = "initSugWebview"
 
     /** 原生建议视图基类；`onUpdate()` 被调说明原生层在刷新 */
     private const val CLS_SUG_VIEW = "com.android.browser.suggestion.BaseSuggestionView"
@@ -185,6 +219,50 @@ internal object SearchSugFeature : Feature(Config.AD_SEARCH_SUG) {
     /** 注入结果日志去重（同一条结果只打一次，避免刷屏） */
     private val injectLogged = HashSet<String>()
 
+    /**
+     * 诊断去重的硬上限（2.0.1）。
+     *
+     * [diagLogged] 原来只加不减：`shouldInterceptRequest` 每个 H5 请求都会塞一条 `url:...`，
+     * 日志本身封了 40 条，集合却没有 —— 长时间使用就是一路涨上去。
+     * 现在集合到上限就停止登记（日志本来就有封顶，行为无变化）。
+     */
+    private const val DIAG_MAX = 512
+
+    /** 已登记的请求 URL 条数（原来每次都要 O(n) 遍历集合去数，现在一个计数器） */
+    private val urlCount = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** H5 请求 URL 日志最多打几条 */
+    private const val URL_LOG_MAX = 40
+
+    /**
+     * 注入计划的延迟表（ms）。
+     *
+     * 1.6.5：前密后疏（0.12/0.32/0.7/1.4/2.6s）—— 第一次落在页面骨架起来之前最好，
+     * CSS 规则一进 DOM，后面渲染出来的卡片就不会再上屏。
+     */
+    private val INJECT_DELAYS = longArrayOf(0L, 120L, 320L, 700L, 1400L, 2600L)
+
+    /** 已经排上队的注入任务（2.0.1）：新一轮注入前先撤掉旧的，避免连续输入时任务叠加 */
+    private val pendingInject = ArrayList<Runnable>()
+
+    /**
+     * 为什么**不**缓存「已注入过完整脚本」这个状态（2.0.1 踩过的坑，别再犯）。
+     *
+     * 试过「首次发完整脚本、后续只发一句重跑」，结果是卡片时有时无 ——
+     * 首次注入发生在 `initSugWebView` 之后、页面还没 `loadUrl` 的时候，
+     * 那时 `document.documentElement` 还是 null：CSS 规则装不上、MutationObserver 也挂不上，
+     * 只有 `window.__hbApply` 这个函数被定义了出来。后面几次轻量调用只执行 `apply()`，
+     * **不会补装 CSS、也不会补挂监听器**，异步渲染出来的卡片就漏了。
+     *
+     * 所以每次都发完整脚本。脚本自身是幂等的（CSS 按 id 复用、observer 只在缺失时新建），
+     * 重复注入不会累积任何东西 —— 而这是「首次注入落空 / 页面重载」时唯一能自愈的路径。
+     */
+
+    /** evaluateJavascript 的反射结果缓存：方法 + 代理回调，按 WebView 实例各一份 */
+    private class EvalEntry(val method: java.lang.reflect.Method, val callback: Any?)
+
+    private val evalEntries = java.util.WeakHashMap<Any, EvalEntry>()
+
     /** 只用于把 evaluateJavascript 挪到主线程 */
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
 
@@ -192,6 +270,51 @@ internal object SearchSugFeature : Feature(Config.AD_SEARCH_SUG) {
         installHooks(cl)
         installDiagnostics(cl)
         installH5Filter(cl)
+        // 2.2.1：H5 注入管不到「原生建议」那条路，两条并行覆盖（各自找不到目标就跳过）
+        installNativeSugFilter(cl)
+    }
+
+    /**
+     * 原生建议广告过滤（2.2.1）。
+     *
+     * 只改 `onResult` 的**入参**（把 type==AD 的项摘掉），不动返回值 ——
+     * 宿主随后基于这份新列表排布，不会出现下标错位。
+     */
+    private fun installNativeSugFilter(cl: ClassLoader) {
+        val cb = findNativeCallback(cl)
+        if (cb == null) {
+            XLog.v("未找到原生建议回调实现，跳过原生过滤")
+            return
+        }
+        val n = Hooks.hookAll(cb, "onResult") { p -> filterNativeAds(p) }
+        XLog.v("原生建议过滤已挂（${cb.name}，$n 个重载）")
+    }
+
+    /** 优先按 20.6 的类名找；换版后编号变了就在 `SearchSuggestionManager$N` 里按方法名兜底 */
+    private fun findNativeCallback(cl: ClassLoader): Class<*>? {
+        Xp.findClass(CLS_NATIVE_CB, cl)?.let { return it }
+        for (i in 1..16) {
+            val c = Xp.findClass("com.android.browser.SearchSuggestionManager\$$i", cl) ?: continue
+            if (c.declaredMethods.any { it.name == "onResult" }) return c
+        }
+        return null
+    }
+
+    private fun filterNativeAds(p: HookedCall) {
+        if (!on()) return
+        val list = p.args.getOrNull(0) as? List<*> ?: return
+        if (list.isEmpty()) return
+        val kept = list.filterNot { isNativeAd(it) }
+        if (kept.size == list.size) return
+        p.args[0] = ArrayList(kept)
+        XLog.v { "原生建议：移除 ${list.size - kept.size} 条广告项（剩余 ${kept.size}）" }
+    }
+
+    /** `NativeSugItem.type` 是枚举；读不到就当作不是广告（宁可漏杀不可误杀） */
+    private fun isNativeAd(item: Any?): Boolean {
+        val type = Hooks.field(item, "type") ?: return false
+        val name = (type as? Enum<*>)?.name ?: type.toString()
+        return name == NATIVE_TYPE_AD
     }
 
     private fun installHooks(cl: ClassLoader) {
@@ -258,15 +381,16 @@ internal object SearchSugFeature : Feature(Config.AD_SEARCH_SUG) {
 
         // 宿主把关键字塞给网页：这条出现 = H5 路径在跑
         Hooks.hook(cl, CLS_WEBVIEW, "queryKeyword") { p ->
-            if (on()) diag("queryKeyword", "queryKeyword -> ${p.args.firstOrNull()}")
+            // 每次输入都会进来：只读快照 + lambda 版（去重命中时连字符串都不拼）
+            if (onCached()) diag("queryKeyword") { "queryKeyword -> ${p.args.firstOrNull()}" }
         }
 
         // 新旧两套搜索建议实现，看哪个在跑
         Hooks.hook(cl, CLS_SUG_MGR, "querySug") { p ->
-            if (on()) diag("querySug", "SearchSugManager.querySug(${p.args.firstOrNull()})")
+            if (on()) diag("querySug") { "SearchSugManager.querySug(${p.args.firstOrNull()})" }
         }
         Hooks.hook(cl, CLS_SUG_MGR_OLD, "querySuggest") { p ->
-            if (on()) diag("querySuggest", "SearchSuggestionManager.querySuggest(${p.args.firstOrNull()})")
+            if (on()) diag("querySuggest") { "SearchSuggestionManager.querySuggest(${p.args.firstOrNull()})" }
         }
 
         // 原生建议视图真的被刷新 → 卡片可能出在原生层
@@ -281,18 +405,25 @@ internal object SearchSugFeature : Feature(Config.AD_SEARCH_SUG) {
             val shown = (Hooks.field(mgr, FIELD_APP_LIST) as? List<*>)?.size ?: -1
             val ad = (Hooks.field(mgr, FIELD_AD_LIST) as? List<*>)?.size ?: -1
             val optional = (Hooks.field(mgr, FIELD_OPTIONAL_LIST) as? List<*>)?.size ?: -1
-            diag(
-                "appList",
+            diag("appList") {
                 "initRecentAppList: list=$shown ad=$ad optional=$optional" +
                     "（ad>0 才有兜底可拦；list<=0 说明这条链是空的）"
-            )
+            }
         }
 
         // 1.6.1：sug 页面里所有请求的 URL —— 用来找「买卡片数据的那个接口」，
         // 找到后就能在 shouldInterceptRequest 里直接改响应体（比改 DOM 更干净）。
         Hooks.hookAfter(cl, CLS_SUG_CLIENT, "shouldInterceptRequest") { p ->
-            if (!on()) return@hookAfter
+            // 2.0.1：这是**每个 H5 资源请求**都会进来的地方，只读快照、绝不发起跨进程刷新
+            if (!onCached()) return@hookAfter
             val url = p.args.getOrNull(1) as? String ?: return@hookAfter
+            // 2.0.1：先看计数再干活 —— 日志封顶之后，Hooks.call 的两次反射都不必再跑
+            if (urlCount.get() >= URL_LOG_MAX) return@hookAfter
+            val first = synchronized(diagLogged) {
+                diagLogged.size < DIAG_MAX && diagLogged.add("url:$url")
+            }
+            if (!first) return@hookAfter
+            urlCount.incrementAndGet()
             val res = p.result
             val extra = if (res == null) {
                 "→ null（交给系统默认加载）"
@@ -301,19 +432,25 @@ internal object SearchSugFeature : Feature(Config.AD_SEARCH_SUG) {
                 val code = Hooks.call(res, "getStatusCode")
                 "→ 宿主自造响应 mime=$mime code=$code"
             }
-            val first = synchronized(diagLogged) { diagLogged.add("url:$url") }
-            if (first && urlSeenCount() <= 40) XLog.v("【诊断】H5 请求 $url $extra")
+            XLog.v { "【诊断】H5 请求 $url $extra" }
         }
     }
 
-    /** 统计已登记的 URL 数（用于给 URL 日志封顶，避免刷爆日志） */
-    private fun urlSeenCount(): Int = synchronized(diagLogged) { diagLogged.count { it.startsWith("url:") } }
-
-    /** 诊断日志去重器：同一条只打一次，避免每次搜索刷屏 */
-    private fun diag(key: String, msg: String) {
-        val first = synchronized(diagLogged) { diagLogged.add(key) }
-        if (first) XLog.v("【诊断】$msg")
+    /**
+     * 诊断日志去重器：同一条只打一次，避免每次搜索刷屏。
+     *
+     * 2.0.1：集合加硬上限（[DIAG_MAX]），并另给一个 lambda 重的载 ——
+     * 热路径（每个搜索词都会触发的那几条）用 lambda，去重命中就不再拼字符串。
+     */
+    private fun diag(key: String, msg: () -> String) {
+        val first = synchronized(diagLogged) {
+            diagLogged.size < DIAG_MAX && diagLogged.add(key)
+        }
+        if (first) XLog.v { "【诊断】" + msg() }
     }
+
+    /** 兼容直接传字符串的调用点（字符串已在调用方构造，低频处用） */
+    private fun diag(key: String, msg: String) = diag(key) { msg }
 
     /** 对应宿主 `RecentApp#isAd()`；调用失败一律当作「不是广告」，宁可漏杀不可误杀。 */
     private fun isAd(app: Any?): Boolean = app != null && Hooks.call(app, "isAd") == true
@@ -328,20 +465,16 @@ internal object SearchSugFeature : Feature(Config.AD_SEARCH_SUG) {
      * 宿主自己的 `evaluateSugJS(String)` 就是 `mWebView.evaluateJavascript(js, null)`。
      */
     private fun installH5Filter(cl: ClassLoader) {
-        // 1) 页面初始化时把 mWebView 存下来
-        Hooks.hookAfter(cl, CLS_SUG_MGR, "initSugWebView") { p ->
-            if (!on()) return@hookAfter
-            val mgr = p.thisObject ?: return@hookAfter
-            val wv = findWebView(mgr) ?: return@hookAfter
-            if (sugWebView !== wv) {
-                sugWebView = wv
-                XLog.i("已捕获搜索建议 WebView，H5 过滤脚本就绪")
-            }
-            // 1.6.5：此刻页面还没 loadUrl，注入多半落空，但一旦成立 CSS 就比任何时机都早
-            inject(wv)
-        }
+        // 1) 页面初始化时把 mWebView 存下来 —— 两端各挂一次。
+        //    手机（20.27+）：suggestion.SearchSugManager#initSugWebView
+        //    平板（20.6）  ：根包 SearchSuggestionManager#initSugWebview（小写 w）
+        //    两个类在各自平台都不存在的那一侧会安静跳过（Hooks 里找不到类只记 v 级日志），
+        //    所以同一条安装路径可以同时覆盖两种宿主。
+        Hooks.hookAfter(cl, CLS_SUG_MGR, METHOD_INIT_SUG_WEBVIEW) { p -> captureSugWebView(p) }
+        Hooks.hookAfter(cl, CLS_SUG_MGR_OLD, METHOD_INIT_SUG_WEBVIEW_LEGACY) { p -> captureSugWebView(p) }
 
         // 2) 每次把关键字喂给网页之后注入（宿主 querySug 末尾就是 mWebView.queryKeyword(JSON)）
+        //    BrowserWebView 这个类两端同名，所以这一条不用分平台。
         Hooks.hookAfter(cl, CLS_WEBVIEW, "queryKeyword") { p ->
             if (!on()) return@hookAfter
             val wv = sugWebView ?: return@hookAfter
@@ -354,37 +487,94 @@ internal object SearchSugFeature : Feature(Config.AD_SEARCH_SUG) {
             if (!on()) return@hookAfter
             sugWebView?.let { inject(it) }
         }
-    }
-
-    /** 分多次注入 —— 页面渲染是异步的，注入太早 observer 还没东西可观察。
-     *  1.6.5：前密后疏（0.12/0.32/0.7/1.4/2.6s）—— 第一次落在页面骨架起来之前最好，
-     *  CSS 规则一进 DOM，后面渲染出来的卡片就不会再上屏。 */
-    private fun inject(wv: Any) {
-        for (delay in longArrayOf(0L, 120L, 320L, 700L, 1400L, 2600L)) {
-            if (delay == 0L) mainHandler.post { evalJs(wv) }
-            else mainHandler.postDelayed({ evalJs(wv) }, delay)
+        Hooks.hookAfter(cl, CLS_SUG_MGR_OLD, "querySug") { p ->
+            if (!on()) return@hookAfter
+            sugWebView?.let { inject(it) }
         }
     }
 
-    /** 在主线程执行 JS，并把页面回传的结果打到日志（前缀 `【注入】`） */
+    /**
+     * 捕获搜索建议 WebView（两端共用同一条实现：字段名都是 `mWebView`，
+     * 类型都是 `miui.browser.webview.BrowserWebView`）。
+     */
+    private fun captureSugWebView(p: HookedCall) {
+        if (!on()) return
+        val mgr = p.thisObject ?: return
+        val wv = findWebView(mgr) ?: return
+        if (sugWebView !== wv) {
+            sugWebView = wv
+            XLog.i("已捕获搜索建议 WebView，H5 过滤脚本就绪")
+        }
+        // 1.6.5：此刻页面还没 loadUrl，注入多半落空，但一旦成立 CSS 就比任何时机都早
+        inject(wv)
+    }
+
+    /**
+     * 分多次注入 —— 页面渲染是异步的，注入太早 observer 还没东西可观察。
+     *
+     * 2.0.1：新一轮注入先 `removeCallbacks` 掉上一轮还没跑的任务。
+     * 搜索框连续输入时每敲一个字都会进来一次，旧实现会让 6 个延迟任务层层叠加，
+     * 既重复注入，也会在页面已经换掉之后还在对旧文档跑脚本。
+     */
+    private fun inject(wv: Any) {
+        synchronized(pendingInject) {
+            for (r in pendingInject) mainHandler.removeCallbacks(r)
+            pendingInject.clear()
+            for (delay in INJECT_DELAYS) {
+                val task = Runnable { evalJs(wv) }
+                pendingInject.add(task)
+                if (delay == 0L) mainHandler.post(task) else mainHandler.postDelayed(task, delay)
+            }
+        }
+    }
+
+    /**
+     * 在主线程执行 JS，并把页面回传的结果打到日志（前缀 `【注入】`）。
+     *
+     * 2.0.1 保留的缓存只有一处：`evaluateJavascript` 的 Method 与那个动态代理回调
+     * **按 WebView 实例**只建一次 —— 原来每次注入都 `javaClass.methods.firstOrNull`
+     * （WebView 子类几百个方法，每次返回新数组）再 `Proxy.newProxyInstance` 造一个新代理。
+     * 脚本本身仍然每次都发**完整**的，理由见上面那段注释。
+     */
     private fun evalJs(wv: Any) {
         try {
+            val entry = evalEntry(wv) ?: return
+            entry.method.invoke(wv, JS_FILTER, entry.callback)
+        } catch (t: Throwable) {
+            XLog.v { "H5 注入失败：${t.javaClass.simpleName} ${t.message}" }
+        }
+    }
+
+    /** 取（或首次建立）这个 WebView 的注入入口：Method + ValueCallback 代理 */
+    private fun evalEntry(wv: Any): EvalEntry? {
+        synchronized(evalEntries) {
+            evalEntries[wv]?.let { return it }
             val m = wv.javaClass.methods.firstOrNull {
                 it.name == "evaluateJavascript" && it.parameterTypes.size == 2
             } ?: run {
                 XLog.v("未找到 WebView#evaluateJavascript，跳过 H5 注入")
-                return
+                return null
             }
-            // 第二个参数是 hyper.webkit.ValueCallback，用动态代理实现它（不硬编码类型，避免类加载对不上）
+            // 第二个参数是 hyper.webkit.ValueCallback，用动态代理实现它（不硬编码类型，避免类加载对不上）。
+            // ⚠ 代理也可能被问到 equals/hashCode/toString —— 一律返回 null 会在框架侧 NPE，这里给答复。
             val cb = runCatching {
                 Proxy.newProxyInstance(wv.javaClass.classLoader, arrayOf(m.parameterTypes[1])) { _, method, args ->
-                    if (method.name == "onReceiveValue") logInject(args?.firstOrNull() as? String)
-                    null
+                    when (method.name) {
+                        "onReceiveValue" -> {
+                            logInject(args?.firstOrNull() as? String)
+                            null
+                        }
+
+                        "hashCode" -> System.identityHashCode(wv)
+                        "equals" -> false
+                        "toString" -> "HbValueCallback"
+                        else -> null
+                    }
                 }
             }.getOrNull()
-            m.invoke(wv, JS_FILTER, cb)
-        } catch (t: Throwable) {
-            XLog.v("H5 注入失败：${t.javaClass.simpleName} ${t.message}")
+            val entry = EvalEntry(m, cb)
+            evalEntries[wv] = entry
+            return entry
         }
     }
 

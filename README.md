@@ -8,7 +8,7 @@
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white)](#安装)
 [![LSPosed](https://img.shields.io/badge/LSPosed-2.3%2B-FF6B6B?style=flat-square)](#安装)
 [![libxposed API](https://img.shields.io/badge/libxposed_API-102-4C8DFF?style=flat-square)](#兼容性)
-[![Host](https://img.shields.io/badge/host-20.32.1011110-FF8C00?style=flat-square)](#兼容性)
+[![Host](https://img.shields.io/badge/host-20.32_%2F_pad_20.6-FF8C00?style=flat-square)](#兼容性)
 [![License](https://img.shields.io/badge/license-proprietary-red?style=flat-square)](#许可与免责)
 
 </div>
@@ -32,7 +32,7 @@
 
 - 包名：`com.hupan.hookbrowser`
 - 作用域：`com.android.browser`
-- 当前版本：**1.15.13**（versionCode 52）
+- 当前版本：**2.2.1**（versionCode 59）
 
 ---
 
@@ -67,7 +67,8 @@
 
 | 项 | 要求 |
 |---|---|
-| 宿主 | **小米浏览器 20.32.1011110**（`com.android.browser`，versionCode 203210100） |
+| 宿主（手机） | **小米浏览器 20.27 – 20.32**（`com.android.browser`，核对基线 20.32.1011110） |
+| 宿主（平板） | **小米浏览器平板版 20.6**（`com.android.browser`，核对基线 20.6.1020915） |
 | 框架 | **LSPosed 2.3 及以上**（模块基于 libxposed API 102） |
 | 系统 | Android 8.0+（minSdk 26） |
 
@@ -210,6 +211,7 @@ hook 目标是对着宿主 **20.32.1011110** 逐个核对过的。小米浏览�
 
 | 版本 | 主题 |
 |---|---|
+| **2.2.1** | **支持平板（20.6.x）**：搜索下拉、首页推广、UA 伪装在平板上生效；修搜索下拉推广卡片（手机改为每次都完整注入，平板改为在原生列表出口摘掉广告项）；修开关偶发读到空表与改开关卡顿；安装包 11.3 MB → 2.15 MB |
 | **2.0.0** | 撤掉模块自带的拦截规则引擎与用户脚本（浏览器 20.32 起支持装扩展）：删 `adblock/` / `scripts/` / `webpage/` / 规则与脚本两个管理页 / 884 KB 内置规则；三 Tab → 两 Tab；13 个开关一个没少 |
 | **1.15.13** | 优化广告拦截：新增「内置推荐规则」（默认关）—— 内置 EasyList China + ADgk 合并去重的 2.8 万条规则，打开即用、随模块版本更新；新增「规则自动更新」（默认开）—— 用 URL 导入的规则集会在打开应用时自动重新下载（24 小时至多一次），也可在规则管理页手动更新；单个规则集下载上限 512 KB → 8 MB，引擎补跨规则集去重。 |
 | **1.15.12** | 规则容量再放宽（三项对齐到 140,000）：引擎域名桶 `40,000 → 120,000`、正则桶 `6,000 → 12,000`、解析层单次导入 `54,000 → 140,000`。定值依据是实测 —— anti-AD 全量 + EasyList China/ADgk 合并包并集去重后需要「域名 101,498 / 子串 1,124 / 正则 6,752」，旧值会丢掉六万条域名与 752 条带路径或通配的规则。顺带澄清「舍弃小米自带规则能提升导入上限」是误判：拼接顺序是 `userRules + hostRules`、引擎按序填桶、满了丢后面的，宿主规则从来没挤占过用户规则的空间（真机日志 `超限丢弃 1` 可证），而它带来的 1,533 条 `##` 规则反而是净收益（native 引擎在网络层碰不到 DOM）。单价值 4 MB 的编码上限未动（最坏组合 3.18 MB，仍有富余）。 |
@@ -249,7 +251,10 @@ hook 目标是对着宿主 **20.32.1011110** 逐个核对过的。小米浏览�
 ---
 
 ## 兼容性
-本工程的 hook 目标是对着宿主 **20.32.1011110** 核对的，核对结果：
+本工程的 hook 目标对着**两份宿主**逐个核对：手机 **20.32.1011110** 与平板 **20.6.1020915**。
+两端的类 / 方法 / 字段全表都用 `apkanalyzer dex packages` 比对过，差异只有五处（均已补双路径）。
+
+下表是**手机 20.32.1011110** 的核对结果：
 
 | 目标 | 结果 |
 |---|---|
@@ -278,7 +283,7 @@ hook 目标是对着宿主 **20.32.1011110** 逐个核对过的。小米浏览�
 
 ### 工程元数据
 
-- 版本：**1.10.1**（versionCode 31）—— 本版补上的是**开关的写入端**：
+- 版本：**2.2.1**（versionCode 59）—— 开关的写入端自 1.10.1 起未变：
   `compileOnly io.github.libxposed:api:102.0.0` + `implementation io.github.libxposed:service:102.0.0`；
   模块身份由 `META-INF/xposed/` 声明；跨进程**读**开关走 `XposedInterface#getRemotePreferences`，
   **写**走 `XposedService`。
@@ -287,7 +292,7 @@ hook 目标是对着宿主 **20.32.1011110** 逐个核对过的。小米浏览�
   `android.suppressUnsupportedCompileSdk=37` 压掉。
 - 承接来源：`base.apk`（**原作者 Jun_ao**，原模块 `干掉小米浏览器广告`，v1.2.0 / versionCode 2；
   原作者 QQ 群 **1094704567**）—— 详见 [原作者与致谢](#原作者与致谢)。
-- hook 目标核对基线：小米浏览器 **20.32.1011110**（`com.android.browser`，versionCode 203210100，34 个 dex）——
+- hook 目标核对基线：手机 **20.32.1011110**（34 个 dex）与平板 **20.6.1020915**——
   本工程所有 hook 点都是在这个版本上实测核对过的。
 1. 用 Android Studio 打开**本工程根目录**（Hedgehog 或更新版本，需要 JDK 17；AS 自带 JBR 即可）。
 2. 直接 `Build > Build APK(s)`。
@@ -1211,7 +1216,7 @@ return ads != null && !TextUtils.isEmpty(ads.getExt());
 | 控制流 | 平坦化展开成 20 层 `Lxposed$1000000NN` 嵌套类，含大量重复逻辑 | 一个功能一个文件 |
 | 资源 | 混淆成 `r/a/a.png`、`r/b/a.xml`（伪 PNG） | 正常 `res/` 结构 |
 | `debuggable` | `true` | 未开启 |
-| 体积 | 100 KB（含 89 KB 混淆 dex） | 无混淆，主要体积来自 androidx |
+| 体积 | 100 KB（含 89 KB 混淆 dex） | 2.1.0 起开 R8 + 资源裁剪：unsigned **2.1 MB**（此前 11.3 MB），体积主要来自 Compose / miuix / 图标集 |
 
 </details>
 

@@ -60,17 +60,45 @@ internal object XLog {
     internal const val TAG = "HookBrowser"
 
     /**
-     * 详细日志的闸门。
+     * 详细日志的闸门（2.0.1：加了一层 1 秒 TTL 的本地缓存）。
      *
-     * 每次现查开关，而不是缓存一个静态标志 —— `Config` 自带缓存，开销可忽略，
-     * 好处是用户在宿主运行期间打开「浏览器调试模式」时日志**当场**变详细，不必重启浏览器。
+     * 原来每次 `v()` 都要过一遍 `Config.on(MISC_DEBUG)`（TTL 判断 + 两次 map 查找），
+     * 而 `v()` 恰恰是热路径上被调得最多的方法（字段读取失败、挂载细节、注入诊断）。
+     * 现在先用一个 volatile 布尔挡一下，秒级粒度与 [Config] 自己的 TTL 对齐 ——
+     * 用户在宿主运行期间打开「浏览器调试模式」，最多 1 秒后日志就变详细，仍然不需要重启浏览器。
      * 读不到配置时 `Config.on` 回退默认值 `false`，也就是继续静默，方向是安全的。
      */
-    private fun verbose(): Boolean = runCatching { Config.on(Config.MISC_DEBUG) }.getOrDefault(false)
+    @Volatile
+    private var verboseFlag = false
 
-    /** 详细日志：默认丢弃 */
+    @Volatile
+    private var verboseAt = 0L
+
+    private const val VERBOSE_TTL_MS = 1000L
+
+    internal fun verboseEnabled(): Boolean {
+        val now = System.currentTimeMillis()
+        if (now - verboseAt < VERBOSE_TTL_MS) return verboseFlag
+        verboseAt = now
+        val v = runCatching { Config.on(Config.MISC_DEBUG) }.getOrDefault(false)
+        verboseFlag = v
+        return v
+    }
+
+    /**
+     * 详细日志：默认丢弃，**参数传 lambda**。
+     *
+     * 直接传字符串的老写法 `v("读字段 $name 失败")` 会在**调用方**就把字符串拼好，
+     * 闸门关着也白造一串对象。热路径一律用 `v { "..." }`：闸门关着时 lambda 根本不执行。
+     */
+    inline fun v(msg: () -> String) {
+        if (!verboseEnabled()) return
+        raw(msg())
+    }
+
+    /** 兼容直接传字符串的调用点（字符串已在调用方构造，热路径别用这个重载） */
     fun v(msg: String) {
-        if (!verbose()) return
+        if (!verboseEnabled()) return
         raw(msg)
     }
 
@@ -83,5 +111,6 @@ internal object XLog {
     }
 
     /** 真正落地的那一层：框架日志接口优先；拿不到框架就退回 logcat */
-    private fun raw(msg: String) = Log.write(android.util.Log.INFO, "$TAG: $msg")
+    @PublishedApi
+    internal fun raw(msg: String) = Log.write(android.util.Log.INFO, "$TAG: $msg")
 }

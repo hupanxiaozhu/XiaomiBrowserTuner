@@ -28,6 +28,11 @@ internal object UaFeature : Feature(Config.UA_PATCH) {
         Hooks.hook(cl, CLS, "getMiuiBrowserUseragentSuffix") { p ->
             if (on()) p.result = ""
         }
+        // 20.6（平板）同一个方法叫 getMiuiBrowserUserAgentSuffix —— **大写 A**。
+        // 名字只差一个字母，挂不上就是「手机上 UA 换了、平板没换」，所以两条都挂。
+        Hooks.hook(cl, CLS, "getMiuiBrowserUserAgentSuffix") { p ->
+            if (on()) p.result = ""
+        }
     }
 }
 

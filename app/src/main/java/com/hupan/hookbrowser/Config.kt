@@ -148,22 +148,51 @@ internal object Config {
     private var remoteFailed = false
 
     /**
-     * 值缓存。
+     * 开关快照（2.0.1 改成**整体替换**）。
      *
-     * 框架给的 `SharedPreferences` 虽然支持变更监听，但回调线程不确定、且每次读都是一次
-     * 跨进程往返；这里加一层短 TTL 缓存，把「一次页面渲染里几十次 `on()`」压成一次读取。
+     * 原实现是「`ConcurrentHashMap.clear()` 后逐条 put」：CHM 本身线程安全，
+     * 但 **clear 到重建完成之间是「一个值都没有」**，而不是「旧值」。
+     * 宿主里读开关的不止一个线程 —— UI 线程（布局 / 绘制回调）、WebView 的后台线程
+     * （`shouldInterceptRequest`）、binder 线程都会进 `on()` / `onCached()`。
+     * 落在那个窗口里的线程会拿到 null，`Feature.onCached()` 因此返回 false，
+     * 那一帧的布局修正就被跳过（多行主页偶发「回退成 2 行」、下一帧又恢复）。
+     *
+     * 现在是一次性构造两张不可变 Map 再整个替换引用：读的一侧永远看到
+     * 「某一份完整快照」，不存在中间态，也不需要任何读锁。
+     * 框架给的 `SharedPreferences` 每次读都是一次跨进程往返，这层短 TTL 缓存照旧保留。
      */
-    private val boolCache = ConcurrentHashMap<String, Boolean>()
-    private val strCache = ConcurrentHashMap<String, String>()
+    private class Snap(
+        val bools: Map<String, Boolean>,
+        val strings: Map<String, String>,
+    )
+
+    @Volatile
+    private var snap = Snap(emptyMap(), emptyMap())
+
+    @Volatile
     private var lastRefresh = 0L
     private const val CACHE_TTL_MS = 1000L
 
-    private var readFailureLogged = false
-    private var failureTicks = 0
+    /** 只放一个线程去拉全量；其余线程直接看旧快照，不会叠加跨进程往返 */
+    private val refreshLock = Any()
+
+    private val readFailureLogged = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val failureTicks = java.util.concurrent.atomic.AtomicInteger(0)
 
     /** 由 [MainHook] 在 `onModuleLoaded` / `onPackageLoaded` 里调用；重复调用无副作用 */
     fun attach(x: XposedInterface) {
         iface = x
+    }
+
+    /**
+     * 预热快照（2.0.1）。
+     *
+     * 热路径（`onLayout` / `shouldInterceptRequest`）只读 [onCached]，不发起跨进程刷新 ——
+     * 但快照要是空的，它们就会一直读到 null 而按「保守不动手」处理。所以在功能安装之前
+     * 主动拉一次，让这批回调从第一帧起就有值可用。
+     */
+    fun warmUp() {
+        refreshIfStale()
     }
 
     private fun handle(): SharedPreferences? {
@@ -194,34 +223,38 @@ internal object Config {
         runCatching { handle()?.all }.getOrNull()
 
     private fun refreshIfStale() {
-        val now = System.currentTimeMillis()
-        if (now - lastRefresh < CACHE_TTL_MS) return
-        lastRefresh = now
-        val snap = snapshot()
-        if (snap == null) {
-            noteFailure(null)
-            return
-        }
-        failureTicks = 0
-        boolCache.clear()
-        strCache.clear()
-        for ((k, v) in snap) {
-            when (v) {
-                is Boolean -> boolCache[k] = v
-                is String -> {
-                    strCache[k] = v
-                    // 宿主读不到 XML 的 app:defaultValue，字符串形式的真假值也认一下
-                    v.toBooleanStrictOrNull()?.let { boolCache[k] = it }
+        if (System.currentTimeMillis() - lastRefresh < CACHE_TTL_MS) return
+        synchronized(refreshLock) {
+            val now = System.currentTimeMillis()
+            if (now - lastRefresh < CACHE_TTL_MS) return
+            lastRefresh = now
+            val all = snapshot()
+            if (all == null) {
+                noteFailure(null)
+                return
+            }
+            failureTicks.set(0)
+            val bools = HashMap<String, Boolean>(all.size * 2)
+            val strings = HashMap<String, String>(all.size)
+            for ((k, v) in all) {
+                when (v) {
+                    is Boolean -> bools[k] = v
+                    is String -> {
+                        strings[k] = v
+                        // 宿主读不到 XML 的 app:defaultValue，字符串形式的真假值也认一下
+                        v.toBooleanStrictOrNull()?.let { bools[k] = it }
+                    }
                 }
             }
+            snap = Snap(bools, strings)
         }
     }
 
     /** 读不到配置时的降噪计数：连续几次才打一行，避免热路径刷屏 */
     private fun noteFailure(key: String?) {
-        if (readFailureLogged) return
-        if (++failureTicks < 3) return
-        readFailureLogged = true
+        if (readFailureLogged.get()) return
+        if (failureTicks.incrementAndGet() < 3) return
+        readFailureLogged.set(true)
         XLog.i(
             "读取开关失败，回退到默认值" +
                 (key?.let { "（$it=${DEFAULTS[it] ?: false}）" } ?: "（remote preferences 不可用）")
@@ -230,9 +263,20 @@ internal object Config {
 
     private fun raw(key: String): Any? {
         refreshIfStale()
-        boolCache[key]?.let { return it }
-        strCache[key]?.let { return it }
+        val s = snap
+        s.bools[key]?.let { return it }
+        s.strings[key]?.let { return it }
         return null
+    }
+
+    /** 把快照里的原始值折成布尔；null / 不可解析走默认值（默认值一律保守） */
+    private fun decode(r: Any?, key: String): Boolean {
+        val def = DEFAULTS[key] ?: false
+        return when (r) {
+            is Boolean -> r
+            is String -> r.toBooleanStrictOrNull() ?: def
+            else -> def
+        }
     }
 
     /**
@@ -242,15 +286,24 @@ internal object Config {
      * 而默认值一律是保守值，绝不允许出现「读不到配置 = 全功能打开」。
      */
     fun on(key: String): Boolean {
-        val def = DEFAULTS[key] ?: false
         val r = raw(key)
-        val v = when (r) {
-            is Boolean -> r
-            is String -> r.toBooleanStrictOrNull() ?: def
-            else -> def
-        }
         if (r == null) noteFailure(key)
-        return v
+        return decode(r, key)
+    }
+
+    /**
+     * 总开关 + 单项开关，**同一份快照**一次判完（2.0.1）。
+     *
+     * 原来 [Feature.on] 写的是 `masterOn() && on(key)` —— 两次 TTL 判断、两次 map 查找，
+     * 而 13 组功能的每个回调都在这条路上。总闸关掉时这里直接短路，第二个 key 都不查。
+     */
+    fun onWithMaster(key: String): Boolean {
+        refreshIfStale()
+        val s = snap
+        val masterValue: Any? = s.bools[MASTER] ?: s.strings[MASTER]
+        if (!decode(masterValue, MASTER)) return false
+        val r: Any? = s.bools[key] ?: s.strings[key]
+        return decode(r, key)
     }
 
     /**
@@ -263,7 +316,7 @@ internal object Config {
      * 返回 `null` 表示「本地快照里还没有这个 key」，由调用方决定兜底策略 ——
      * 通常是保守跳过，不会因此放宽行为。
      */
-    fun onCached(key: String): Boolean? = boolCache[key]
+    fun onCached(key: String): Boolean? = snap.bools[key]
 
     /** 总开关单独走一条：任何单功能开关都不能绕开它 */
     fun masterOn(): Boolean = on(MASTER)

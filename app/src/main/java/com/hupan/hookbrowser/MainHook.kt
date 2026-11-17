@@ -1,5 +1,6 @@
 package com.hupan.hookbrowser
 
+import com.hupan.hookbrowser.features.Feature
 import com.hupan.hookbrowser.features.Features
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
@@ -59,17 +60,51 @@ class MainHook : XposedModule() {
         Config.attach(this)
         // 拿宿主 Context：读宿主自己的 adblock 规则库要用（模块进程读不到它的私有目录）
         HostContext.install()
+        // 预热开关快照：热路径（布局 / 请求回调）只读本地快照，先拉一次它们才有值可用
+        Config.warmUp()
 
+        // 2.0.1：拆两批安装。
+        // 第一批是首屏链路（开屏 / 主页推广 / 搜索建议 / 搜索引擎 / 主页快捷方式 / 宿主去广告开关），
+        // 必须在对应 UI 起来之前挂好；第二批（错误页 / 下载 / 回弹 / UA / 高级项）在用户真正
+        // 走到那儿之前不会触发，推到 Application 建好之后再挂 —— 几十次 Class.forName
+        // 本来全压在宿主冷启动主线程上，那是能感觉到的启动开销。
+        val deferred = ArrayList<Feature>()
         Features.ALL.forEach { feature ->
-            try {
-                feature.install(param.defaultClassLoader)
-            } catch (t: Throwable) {
-                // 单个功能失败只记日志，继续装后面的
-                XLog.e("功能 [${feature.key}] 安装失败，已跳过", t)
+            if (feature.key in DEFERRED_KEYS) deferred.add(feature) else installOne(feature, param.defaultClassLoader)
+        }
+        if (deferred.isNotEmpty()) {
+            HostContext.onApplication {
+                deferred.forEach { installOne(it, param.defaultClassLoader) }
+                XLog.i("延后功能注册完成，共 ${deferred.size} 组")
             }
         }
 
-        XLog.i("功能注册完成，共 ${Features.ALL.size} 组")
+        XLog.i("功能注册完成，共 ${Features.ALL.size} 组（其中 ${deferred.size} 组延后）")
+    }
+
+    /**
+     * 第二批安装的开关 key（2.0.1）。
+     *
+     * 幂等、失败隔离都照旧（[installOne]），这里只决定**什么时候**挂。
+     * 判断依据是「首屏链路要不要」：这些功能的目标方法在用户点进对应界面之前不会被调用。
+     */
+    private val DEFERRED_KEYS = setOf(
+        Config.AD_ERROR_PAGE_HOT,
+        Config.UI_DOWNLOAD,
+        Config.UI_HOME_BOUNCE,
+        Config.UA_PATCH,
+        Config.MISC_UNLOCK_PREF,
+        Config.MISC_DEBUG,
+        Config.MISC_SECURITY,
+    )
+
+    /** 单个功能安装：失败只记日志，继续装后面的（与 1.10.0 起的行为一致） */
+    private fun installOne(feature: Feature, cl: ClassLoader) {
+        try {
+            feature.install(cl)
+        } catch (t: Throwable) {
+            XLog.e("功能 [${feature.key}] 安装失败，已跳过", t)
+        }
     }
 
     companion object {

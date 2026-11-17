@@ -39,13 +39,21 @@ android {
         // 注入通道抽成共享件 webpage/PageInjection；其余功能与 hook 逻辑未动。
         // 1.15.8：修「功能页顶部把已装的宿主显示成『未安装』」—— manifest 缺 <queries> 包
         // 可见性声明（targetSdk 34 受 Android 11+ 包可见性过滤），补上并让文案区分「查不到」。
-        versionCode = 54
-        versionName = "2.0.0"
+        // 2.2.1（59）：平板补原生建议广告过滤 —— 20.6 的搜索下拉还有一套原生实现
+        // （NativeSugManager + NativeSugItem.type=AD），H5 注入打不到
+        versionCode = 59
+        versionName = "2.2.1"
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // 2.0.1：打开 R8 + 资源裁剪。
+            // 之前一直全关，11 MB 的包里 Compose / miuix / 图标集都是未裁剪的原始字节码。
+            // keep 规则见 app/proguard-rules.pro：框架反射入口（MainHook）、写穿通道
+            // （ModuleService）、feature 包与更新模型。宿主侧的类名是字符串（Class.forName），
+            // 不参与本 APK 的裁剪，不受影响。
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -88,6 +96,12 @@ android {
         abortOnError = false
         checkReleaseBuilds = false
     }
+
+    testOptions {
+        // 纯 JVM 单测：Android 侧调用返回默认值（不执行真实实现），
+        // 这样不依赖 Robolectric 也能覆盖 compareVersions 这类纯逻辑
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -121,6 +135,10 @@ dependencies {
     implementation("top.yukonga.miuix.kmp:miuix-navigation3-ui-android:0.9.3")
     implementation("androidx.navigation3:navigation3-runtime:1.1.4")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+
+    // 纯 JVM 单测（src/test）：只覆盖不依赖 Android 运行时的纯函数，
+    // 目前是 update/VersionCompare.kt 的版本号比较
+    testImplementation("junit:junit:4.13.2")
 
     // ⛔ 不要加 miuix-blur：它的 AAR 声明 minSdk 33，本模块 minSdk 26，
     //    加进来会让 manifest 合并直接失败（界面也没有模糊背板）。
